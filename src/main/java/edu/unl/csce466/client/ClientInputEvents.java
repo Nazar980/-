@@ -1,7 +1,7 @@
 package edu.unl.csce466.client;
 
 import edu.unl.csce466.ExampleMod;
-import edu.unl.csce466.mixins.IMinecraftAccessor;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.event.TickEvent;
@@ -11,16 +11,6 @@ import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Key handler: L toggles mod menu.
- * 
- * We NEVER call Minecraft.getInstance(), mc.screen, or mc.setScreen() here.
- * All those methods have SRG name issues in production (m_91087_ etc).
- * 
- * Instead, MinecraftMixin captures the instance at init and implements
- * IMinecraftAccessor.examplemod$toggleScreen() where all Minecraft
- * field/method references are correctly remapped by the mixin processor.
- */
 @Mod.EventBusSubscriber(modid = ExampleMod.MODID, value = Dist.CLIENT)
 public final class ClientInputEvents {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClientInputEvents.class);
@@ -41,18 +31,23 @@ public final class ClientInputEvents {
         pendingToggle = false;
 
         try {
-            Object mcObj = ExampleMod.mcInstance;
-            if (mcObj == null) {
-                LOGGER.warn("[Mod] Minecraft instance not yet captured by mixin");
+            Object mc = ExampleMod.mcInstance;
+            if (mc == null) {
+                LOGGER.warn("[Mod] Minecraft instance not captured yet");
                 return;
             }
 
-            // Cast to our interface — this calls into the mixin where
-            // screen/setScreen are properly remapped
-            ((IMinecraftAccessor) mcObj).examplemod$toggleScreen();
-            LOGGER.info("[Mod] Menu toggled via mixin");
+            Screen currentScreen = ScreenHelper.getScreen(mc);
+
+            if (currentScreen instanceof ModMenuScreen) {
+                ScreenHelper.setScreen(mc, null);
+                LOGGER.info("[Mod] Menu closed");
+            } else if (currentScreen == null) {
+                ScreenHelper.setScreen(mc, new ModMenuScreen());
+                LOGGER.info("[Mod] Menu opened");
+            }
         } catch (Throwable t) {
-            LOGGER.error("[Mod] Failed to toggle menu", t);
+            LOGGER.error("[Mod] Toggle failed", t);
         }
     }
 }
