@@ -14,7 +14,7 @@ import imgui.flag.ImGuiConfigFlags;
 
 @Mixin(RenderSystem.class)
 public abstract class RenderSystemMixin {
-    
+
     @Inject(at = @At(value = "TAIL"), method = "initRenderer", remap = true)
     private static void initRenderer(CallbackInfo cbi) {
         RenderSystem.assertOnRenderThread();
@@ -24,11 +24,15 @@ public abstract class RenderSystemMixin {
             ImGui.getIO().addConfigFlags(ImGuiConfigFlags.DockingEnable);
         });
     }
-    
-    // CORRECT for Minecraft 1.21.4
-    // Target by method NAME only. This is the most reliable way.
-    @Inject(method = "flipFrame", at = @At("HEAD"))
-    private static void flipFrame(long window, CallbackInfo cbi) {
+
+    // Correct signature for Minecraft 1.21.4
+    // The method is flipFrame(long, TracyFrameCapture)
+    @Inject(
+        method = "flipFrame(JLcom/mojang/blaze3d/TracyFrameCapture;)V",
+        at = @At("HEAD"),
+        remap = true
+    )
+    private static void flipFrame(long window, Object tracyCapture, CallbackInfo cbi) {
         RenderSystem.recordRenderCall(() -> {
             ImGuiRenderer.getInstance().render();
         });
