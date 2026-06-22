@@ -1,7 +1,6 @@
 package edu.unl.csce466;
 
 import com.mojang.logging.LogUtils;
-import edu.unl.csce466.imgui.ImGuiRenderer;
 import edu.unl.csce466.screens.ImGuiScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
@@ -26,24 +25,16 @@ public class ExampleMod {
     public static class ClientModEvents {
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
-            LOGGER.info("ExampleMod initialized for Minecraft 1.21.4");
+            LOGGER.info("Example Mod initialized for Minecraft 1.21.4");
         }
     }
 
     @SubscribeEvent
     public void onKeyInput(InputEvent.Key event) {
-        // Безопасно проверяем наличие игрока
-        try {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc.player == null) return;
-            if (mc.screen != null) return;
-        } catch (Exception e) {
-            return;
-        }
+        if (Minecraft.getInstance().player == null) return;
+        if (Minecraft.getInstance().screen != null) return;
 
         if (event.getKey() == GLFW.GLFW_KEY_L) {
-            // Lazy init + open screen
-            ImGuiRenderer.getInstance().initIfNeeded();
             Minecraft.getInstance().setScreen(ImGuiScreen.getInstance());
         }
     }

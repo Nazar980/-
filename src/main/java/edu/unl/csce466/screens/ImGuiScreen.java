@@ -18,22 +18,21 @@ public class ImGuiScreen extends Screen {
     }
 
     private ImGuiScreen() {
+        // Component.empty() — работает на TLauncher без NoSuchMethodError
         super(Component.empty());
-    }
-    
-    @Override
-    public void init() {
-        super.init();
-        ImGuiRenderer.getInstance().initIfNeeded();
     }
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         super.render(guiGraphics, mouseX, mouseY, partialTick);
 
+        if (!ImGuiRenderer.getInstance().isInitialized()) {
+            return;
+        }
+
         ImGuiRenderer.getInstance().draw(() -> {
             ImGui.begin("ImGui Menu");
-            ImGui.text("ImGui works on MC 1.21.4!");
+            ImGui.text("ImGui is working on Minecraft 1.21.4!");
             ImGui.text("Press ESC to close");
             ImGui.end();
         });
