@@ -15,23 +15,37 @@ import imgui.flag.ImGuiConfigFlags;
 @Mixin(RenderSystem.class)
 public abstract class RenderSystemMixin {
 
-    @Inject(at = @At(value = "TAIL"), method = "initRenderer", remap = true)
-    private static void initRenderer(CallbackInfo cbi) {
+    @Inject(at = @At(value = "TAIL"), method = "initRenderer", remap = false)
+    private static void onInitRenderer(CallbackInfo cbi) {
         RenderSystem.assertOnRenderThread();
-        LogUtils.getLogger().info("[ImGui] Initializing ImGui for Forge 1.21.4");
-        ImGuiRenderer.getInstance().init(() -> {
-            imgui.ImGuiIO io = ImGui.getIO();
-            io.addConfigFlags(ImGuiConfigFlags.ViewportsEnable);
-            io.addConfigFlags(ImGuiConfigFlags.DockingEnable);
-        });
+        
+        try {
+            // FIX: Получаем реальный GLFW window handle от Minecraft,
+            // а не glfwGetCurrentContext() (который возвращает GL контекст!)
+            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+            if (mc == null || mc.getWindow() == null) {
+                LogUtils.getLogger().warn("[ImGui] Cannot init: Minecraft/Window null during initRenderer");
+                return;
+            }
+            
+            long windowHandle = mc.getWindow().getWindow();
+            LogUtils.getLogger().info("[ImGui] Window handle: 0x" + Long.toHexString(windowHandle));
+            
+            ImGuiRenderer.getInstance().init(windowHandle, () -> {
+                ImGui.getIO().addConfigFlags(ImGuiConfigFlags.DockingEnable);
+            });
+            
+        } catch (Exception e) {
+            LogUtils.getLogger().error("[ImGui] Init in RenderSystem failed, will try lazy init: " + e.getMessage(), e);
+        }
     }
 
     @Inject(
-        method = "flipFrame",
+        method = "flipFrame(JLcom/mojang/blaze3d/TracyFrameCapture;)V",
         at = @At("HEAD"),
-        remap = true
+        remap = false
     )
-    private static void flipFrame(long window, com.mojang.blaze3d.TracyFrameCapture tracyCapture, CallbackInfo cbi) {
+    private static void onFlipFrame(long window, com.mojang.blaze3d.TracyFrameCapture tracyCapture, CallbackInfo cbi) {
         ImGuiRenderer.getInstance().render();
     }
 }

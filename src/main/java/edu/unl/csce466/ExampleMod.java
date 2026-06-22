@@ -17,10 +17,7 @@ public class ExampleMod {
     public static final String MODID = "examplemod";
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    public static ImGuiScreen IMGUI_SCREEN;
-
     public ExampleMod() {
-        // Инициализируем экран лениво, чтобы избежать проблем с маппингами при загрузке класса
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -28,18 +25,7 @@ public class ExampleMod {
     public static class ClientModEvents {
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
-            LOGGER.info("ImGui initialized for Minecraft 1.21.4");
-            IMGUI_SCREEN = ImGuiScreen.getInstance();
-            IMGUI_SCREEN.init();
-        }
-    }
-
-    @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
-    public static class ClientModEvents {
-        @SubscribeEvent
-        public static void onClientSetup(FMLClientSetupEvent event) {
-            LOGGER.info("ImGui initialized for Minecraft 1.21.4");
-            IMGUI_SCREEN.init();
+            LOGGER.info("Example Mod initialized for Minecraft 1.21.4");
         }
     }
 
@@ -49,7 +35,7 @@ public class ExampleMod {
         if (Minecraft.getInstance().screen != null) return;
 
         if (event.getKey() == GLFW.GLFW_KEY_L) {
-            Minecraft.getInstance().setScreen(IMGUI_SCREEN);
+            Minecraft.getInstance().setScreen(ImGuiScreen.getInstance());
         }
     }
 }
