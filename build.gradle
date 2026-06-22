@@ -129,7 +129,7 @@ tasks.withType(ProcessResources).configureEach {
 
 tasks.named('processResources', ProcessResources).configure {
     dependsOn tasks.named('compileJava')
-    from("${buildDir}/tmp/compileJava/mixin.refmap.json") {
+    from("${buildDir}/tmp/compileJava/compileJava-refmap.json") {
         rename { 'forge-mixin.refmap.json' }
     }
 }
