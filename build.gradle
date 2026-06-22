@@ -32,7 +32,7 @@ tasks.named('jarJar').configure {
 }
 
 minecraft {
-    mappings channel: 'official', version: '1.21.4'
+    mappings channel: 'srg', version: '1.21.4'
 
     runs {
         client {
