@@ -38,17 +38,4 @@ public abstract class RenderSystemMixin {
             LogUtils.getLogger().error("[ImGui] Init failed: " + e.getMessage(), e);
         }
     }
-
-    @Inject(
-        method = "flipFrame(JLcom/mojang/blaze3d/TracyFrameCapture;)V",
-        at = @At("HEAD"),
-        remap = false
-    )
-    private static void onFlipFrame(long window, com.mojang.blaze3d.TracyFrameCapture tracyCapture, CallbackInfo cbi) {
-        try {
-            ImGuiRenderer.getInstance().render();
-        } catch (Exception e) {
-            // Silently skip — don't crash the game over an ImGui render failure
-        }
-    }
 }
