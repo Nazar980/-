@@ -32,7 +32,7 @@ public abstract class RenderSystemMixin {
         at = @At("HEAD"),
         remap = true
     )
-    private static void flipFrame(long window, Object tracyCapture, CallbackInfo cbi) {
+    private static void flipFrame(long window, com.mojang.blaze3d.TracyFrameCapture tracyCapture, CallbackInfo cbi) {
         RenderSystem.recordRenderCall(() -> {
             ImGuiRenderer.getInstance().render();
         });
