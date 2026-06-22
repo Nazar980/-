@@ -1,132 +1,123 @@
 package edu.unl.csce466.imgui;
 
-import imgui.ImGui;
-import imgui.gl3.ImGuiImplGl3;
-import imgui.glfw.ImGuiImplGlfw;
 import java.util.ArrayList;
 import java.util.Objects;
+import imgui.ImGui;
+import imgui.flag.ImGuiConfigFlags;
+import imgui.flag.ImGuiWindowFlags;
+import imgui.gl3.ImGuiImplGl3;
+import imgui.glfw.ImGuiImplGlfw;
+import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class ImGuiRenderer {
     private static final Logger LOGGER = LoggerFactory.getLogger(ImGuiRenderer.class);
-    private static ImGuiRenderer instance;
-
+    private static ImGuiRenderer _INSTANCE = null;
+    
     public static ImGuiRenderer getInstance() {
-        if (instance == null) {
-            instance = new ImGuiRenderer();
-        }
-        return instance;
+        if (_INSTANCE == null) _INSTANCE = new ImGuiRenderer();
+        return _INSTANCE;
     }
-
-    private final ArrayList<ImGuiCall> drawCalls = new ArrayList<>();
+    
+    private final ArrayList<ImGuiCall> _drawCalls = new ArrayList<>();
     private final ImGuiImplGlfw imGuiGlfw = new ImGuiImplGlfw();
     private final ImGuiImplGl3 imGuiGl = new ImGuiImplGl3();
-    private boolean initialized;
-    private boolean menuVisible;
-
-    private ImGuiRenderer() {
-    }
-
+    private boolean initialized = false;
+    private boolean menuVisible = false;
+    
+    private ImGuiRenderer() {}
+    
     public void init(long windowHandle, ImGuiCall config) {
         if (initialized) {
+            LOGGER.info("[ImGui] Already initialized, skipping.");
             return;
         }
-
-        if (windowHandle == 0L) {
-            LOGGER.error("[ImGui] Window handle is 0, init skipped");
-            return;
-        }
-
+        
+        LOGGER.info("[ImGui] Initializing with window handle: 0x" + Long.toHexString(windowHandle));
+        
         try {
             ImGui.createContext();
-
+            
             if (config != null) {
                 config.execute();
             }
-
-            imGuiGlfw.init(windowHandle, false);
+            
+            // true = устанавливаем собственные GLFW-коллбэки ImGui.
+            // ImGui сохраняет старые коллбэки Minecraft и вызывает их после себя (чейниг),
+            // поэтому игра продолжает получать ввод, а ImGui — может реагировать на клики/текст.
+            imGuiGlfw.init(windowHandle, true);
             imGuiGl.init("#version 330 core");
-
+            
             initialized = true;
-            LOGGER.info("[ImGui] Initialized");
-        } catch (Throwable throwable) {
-            LOGGER.error("[ImGui] Failed to initialize", throwable);
+            LOGGER.info("[ImGui] Successfully initialized!");
+            
+        } catch (Exception e) {
+            LOGGER.error("[ImGui] Failed to initialize: " + e.getMessage(), e);
             initialized = false;
         }
     }
-
+    
     public boolean isInitialized() {
         return initialized;
     }
-
-    public void showMenu() {
-        menuVisible = true;
-    }
-
-    public void hideMenu() {
-        menuVisible = false;
-    }
-
-    public boolean isMenuVisible() {
-        return menuVisible;
-    }
-
-    public void toggleMenu() {
-        menuVisible = !menuVisible;
-    }
-
+    
+    public void showMenu() { menuVisible = true; }
+    public void hideMenu() { menuVisible = false; }
+    public boolean isMenuVisible() { return menuVisible; }
+    public void toggleMenu() { menuVisible = !menuVisible; }
+    
     public void draw(ImGuiCall drawCall) {
-        if (drawCall != null) {
-            drawCalls.add(drawCall);
-        }
+        _drawCalls.add(drawCall);
     }
-
+    
     public void render() {
         if (!initialized) {
             return;
         }
-
+        
         try {
             imGuiGlfw.newFrame();
             ImGui.newFrame();
-
+            
+            // Встроенное меню мода
             if (menuVisible) {
-                ImGui.begin("CSCE466 ImGui Menu");
-                ImGui.text("ImGui works on Minecraft Forge 1.21.4");
-                ImGui.text("Press L to toggle, ESC to close");
+                ImGui.begin("ImGui Menu", ImGuiWindowFlags.AlwaysAutoResize);
+                ImGui.text("ImGui is working on Minecraft 1.21.4!");
+                ImGui.separator();
+                ImGui.text("Toggle: press L");
+                if (ImGui.button("Close")) {
+                    menuVisible = false;
+                }
                 ImGui.end();
             }
-
-            for (ImGuiCall drawCall : drawCalls) {
+            
+            // Внешние draw calls
+            for (ImGuiCall drawCall : _drawCalls) {
                 try {
                     drawCall.execute();
-                } catch (Throwable throwable) {
-                    LOGGER.error("[ImGui] Draw call error", throwable);
+                } catch (Exception e) {
+                    LOGGER.error("[ImGui] Draw call error: " + e.getMessage(), e);
                 }
             }
-            drawCalls.clear();
-
+            _drawCalls.clear();
+            
             ImGui.render();
             imGuiGl.renderDrawData(Objects.requireNonNull(ImGui.getDrawData()));
-        } catch (Throwable throwable) {
-            LOGGER.error("[ImGui] Render error", throwable);
+        } catch (Exception e) {
+            LOGGER.error("[ImGui] Render error: " + e.getMessage(), e);
         }
     }
-
+    
     public void shutdown() {
-        if (!initialized) {
-            return;
-        }
-
+        if (!initialized) return;
         try {
             imGuiGl.shutdown();
             imGuiGlfw.shutdown();
             ImGui.destroyContext();
-        } catch (Throwable throwable) {
-            LOGGER.error("[ImGui] Shutdown error", throwable);
-        } finally {
             initialized = false;
+        } catch (Exception e) {
+            LOGGER.error("[ImGui] Shutdown error: " + e.getMessage(), e);
         }
     }
 }

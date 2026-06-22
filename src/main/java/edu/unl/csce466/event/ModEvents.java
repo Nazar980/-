@@ -8,6 +8,7 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 public class ModEvents {
+
     @Mod.EventBusSubscriber(modid = ExampleMod.MODID)
     public static class ForgeEvents {
         public static boolean start = false;
@@ -15,10 +16,13 @@ public class ModEvents {
         @SubscribeEvent
         public static void onPlayerInteract(PlayerInteractEvent event) {
             if (event instanceof PlayerInteractEvent.RightClickEmpty && start) {
+                System.out.println("right click");
                 LivingEntity player = event.getEntity();
-                Vec3 playerPos = player.getEyePosition(0);
-                Vec3 spawnPos = new Vec3(playerPos.x + 10, playerPos.y, playerPos.z);
-                System.out.println("Player looking at: " + spawnPos);
+                if (player != null) {
+                    Vec3 plrPos = player.getEyePosition(0);
+                    Vec3 spawnPos = new Vec3(plrPos.x + 10, plrPos.y, plrPos.z);
+                    System.out.println("Player looking at: " + spawnPos);
+                }
             }
         }
     }

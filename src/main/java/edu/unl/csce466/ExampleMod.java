@@ -10,6 +10,6 @@ public class ExampleMod {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     public ExampleMod() {
-        LOGGER.info("CSCE466 ImGui Mod loaded for Minecraft 1.21.4");
+        LOGGER.info("Example Mod loaded for Minecraft 1.21.4");
     }
 }
