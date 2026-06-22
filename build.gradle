@@ -29,10 +29,15 @@ jarJar.enable()
 
 tasks.named('jarJar').configure {
     finalizedBy 'reobfJarJar'
+    manifest {
+        attributes([
+            "MixinConfigs": "forge-mixin.json"
+        ])
+    }
 }
 
 minecraft {
-    mappings channel: 'srg', version: '1.21.4'
+    mappings channel: 'official', version: '1.21.4'
 
     runs {
         client {
