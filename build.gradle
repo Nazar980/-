@@ -39,8 +39,10 @@ minecraft {
             workingDirectory project.file('run')
             property 'forge.logging.markers', 'REGISTRIES'
             property 'forge.logging.console.level', 'debug'
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
             mods {
-                examplemod {
+                csce466mod {
                     source sourceSets.main
                 }
             }
@@ -50,7 +52,7 @@ minecraft {
             property 'forge.logging.markers', 'REGISTRIES'
             property 'forge.logging.console.level', 'debug'
             mods {
-                examplemod {
+                csce466mod {
                     source sourceSets.main
                 }
             }
@@ -69,7 +71,10 @@ repositories {
 }
 
 ext {
-    imguiVersion = '1.86.10'
+    // Обновлено до версии, совместимой с LWJGL 3.3.3 (используется в MC 1.21.4)
+    // 1.87.5 - последняя стабильная версия для LWJGL 3.3.x
+    imguiVersion = '1.87.5'
+    lwjglVersion = '3.3.3'
 }
 
 dependencies {
@@ -77,16 +82,27 @@ dependencies {
 
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 
-    // ImGui + JarJar — same as your 1.19.2 mod
-    ['binding', 'lwjgl3', 'natives-linux', 'natives-windows', 'natives-macos'].each {
-        minecraftLibrary (group: "io.github.spair", name: "imgui-java-${it}", version: "$imguiVersion") {
-            exclude group: "org.lwjgl"
+    // Явно исключаем все транзитивные LWJGL зависимости из imgui
+    // и используем те, что предоставляет Minecraft
+    ['binding', 'lwjgl3', 'natives-linux', 'natives-windows', 'natives-macos'].each { String module ->
+        implementation("io.github.spair:imgui-java-${module}:${imguiVersion}") {
+            exclude group: 'org.lwjgl'
+            exclude group: 'io.github.spair', module: 'imgui-java-natives-linux'
+            exclude group: 'io.github.spair', module: 'imgui-java-natives-macos'
+            exclude group: 'io.github.spair', module: 'imgui-java-natives-windows'
         }
-        jarJar (group: "io.github.spair", name: "imgui-java-${it}", version: "[0,)") {
+        
+        // Ограничиваем версию jarJar, чтобы не подтянулась несовместимая 1.92.0+
+        jarJar("io.github.spair:imgui-java-${module}:[${imguiVersion},1.88.0)") {
             transitive(false)
-            exclude group: "org.lwjgl"
+            exclude group: 'org.lwjgl'
         }
     }
+    
+    // Явно добавляем LWJGL зависимости из Minecraft, если нужно
+    implementation "org.lwjgl:lwjgl:${lwjglVersion}"
+    implementation "org.lwjgl:lwjgl-glfw:${lwjglVersion}"
+    implementation "org.lwjgl:lwjgl-opengl:${lwjglVersion}"
 }
 
 mixin {
@@ -99,12 +115,12 @@ mixin {
 jar {
     manifest {
         attributes([
-            "Specification-Title"     : "examplemod",
-            "Specification-Vendor"    : "examplemodsareus",
+            "Specification-Title"     : "csce466-mod",
+            "Specification-Vendor"    : "csce466",
             "Specification-Version"   : "1",
             "Implementation-Title"    : project.name,
             "Implementation-Version"  : project.jar.archiveVersion,
-            "Implementation-Vendor"   : "examplemodsareus",
+            "Implementation-Vendor"   : "csce466",
             "MixinConfigs"            : "forge-mixin.json"
         ])
     }
@@ -122,7 +138,18 @@ tasks.withType(ProcessResources).configureEach {
 
 tasks.named('processResources', ProcessResources).configure {
     dependsOn tasks.named('compileJava')
-    from("$buildDir/tmp/compileJava/mixin.refmap.json") {
+    from("${buildDir}/tmp/compileJava/mixin.refmap.json") {
         rename { 'forge-mixin.refmap.json' }
+    }
+}
+
+// Стратегия разрешения конфликтов
+dependencies {
+    components {
+        all { ComponentMetadataDetails details ->
+            if (details.group == 'io.github.spair' && details.module.name.startsWith('imgui-java')) {
+                details.statusScheme = ['release']
+            }
+        }
     }
 }
