@@ -1,15 +1,13 @@
 package edu.unl.csce466.imgui;
-
 import java.util.ArrayList;
 import java.util.Objects;
 import imgui.ImGui;
+import imgui.ImFontAtlas;
 import imgui.flag.ImGuiConfigFlags;
 import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
-import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 public class ImGuiRenderer {
     private static final Logger LOGGER = LoggerFactory.getLogger(ImGuiRenderer.class);
     private static ImGuiRenderer _INSTANCE = null;
@@ -22,46 +20,50 @@ public class ImGuiRenderer {
     private final ArrayList<ImGuiCall> _drawCalls = new ArrayList<>();
     private final ImGuiImplGlfw imGuiGlfw = new ImGuiImplGlfw();
     private final ImGuiImplGl3 imGuiGl = new ImGuiImplGl3();
-    private boolean initialized = false;
+    private boolean _initialized = false;
     
     private ImGuiRenderer() {}
     
-    /**
-     * Инициализация ImGui с GLFW window handle
-     * @param windowHandle GLFWwindow* от GLFW.glfwGetCurrentContext()
-     * @param config коллбэк для настройки ImGui (флаги, шрифты и т.д.)
-     */
-    public void init(long windowHandle, ImGuiCall config) {
-        if (initialized) {
-            LOGGER.info("[ImGui] Already initialized, skipping.");
+    public void init(long windowPtr, ImGuiCall config) {
+        if (_initialized) {
             return;
         }
         
-        LOGGER.info("[ImGui] Initializing with window handle: 0x" + Long.toHexString(windowHandle));
+        LOGGER.info("[ImGui] Initializing with window handle: 0x{}", Long.toHexString(windowPtr));
         
         try {
-            // 1. Создаём ImGui контекст
+            // Step 1: Create context
             ImGui.createContext();
             
-            // 2. Конфигурация (докинг, шрифты и т.д.)
+            // Step 2: Configure IO
             if (config != null) {
                 config.execute();
             }
             
-            // 3. Инициализация GLFW бэкенда
-            // installCallbacks = false — Minecraft сам обрабатывает ввод
-            imGuiGlfw.init(windowHandle, false);
+            // Step 3: Build font atlas BEFORE backend init
+            // This is the KEY FIX: fonts must be built before NewFrame() is ever called
+            ImFontAtlas fontAtlas = ImGui.getIO().getFonts();
+            fontAtlas.build();
             
-            // 4. Инициализация OpenGL бэкенда
-            imGuiGl.init("#version 330 core");
+            // Step 4: Init GLFW backend (false = don't set callbacks)
+            imGuiGlfw.init(windowPtr, false);
             
-            initialized = true;
+            // Step 5: Init OpenGL backend - this uploads font texture to GPU
+            imGuiGl.init("#version 150");
+            
+            _initialized = true;
             LOGGER.info("[ImGui] Successfully initialized!");
             
         } catch (Exception e) {
-            LOGGER.error("[ImGui] Failed to initialize: " + e.getMessage(), e);
-            initialized = false;
+            LOGGER.error("[ImGui] Init failed", e);
         }
+    }
+    
+    public void initFromMixin(long windowHandle) {
+        if (_initialized) return;
+        init(windowHandle, () -> {
+            ImGui.getIO().addConfigFlags(ImGuiConfigFlags.DockingEnable);
+        });
     }
     
     public void draw(ImGuiCall drawCall) {
@@ -69,9 +71,7 @@ public class ImGuiRenderer {
     }
     
     public void render() {
-        if (!initialized) {
-            return;
-        }
+        if (!_initialized) return;
         
         try {
             imGuiGlfw.newFrame();
@@ -81,31 +81,15 @@ public class ImGuiRenderer {
                 try {
                     drawCall.execute();
                 } catch (Exception e) {
-                    LOGGER.error("[ImGui] Draw call error: " + e.getMessage(), e);
+                    LOGGER.error("[ImGui] Draw error", e);
                 }
             }
             _drawCalls.clear();
             
             ImGui.render();
-            imGuiGl.renderDrawData(Objects.requireNonNull(ImGui.getDrawData()));
+            imGuiGl.renderDrawData(ImGui.getDrawData());
         } catch (Exception e) {
-            LOGGER.error("[ImGui] Render error: " + e.getMessage(), e);
-        }
-    }
-    
-    public boolean isInitialized() {
-        return initialized;
-    }
-    
-    public void shutdown() {
-        if (!initialized) return;
-        try {
-            imGuiGl.shutdown();
-            imGuiGlfw.shutdown();
-            ImGui.destroyContext();
-            initialized = false;
-        } catch (Exception e) {
-            LOGGER.error("[ImGui] Shutdown error: " + e.getMessage(), e);
+            LOGGER.error("[ImGui] Render error", e);
         }
     }
 }
