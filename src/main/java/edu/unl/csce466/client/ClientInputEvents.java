@@ -1,8 +1,7 @@
 package edu.unl.csce466.client;
 
 import edu.unl.csce466.ExampleMod;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.Screen;
+import edu.unl.csce466.mixins.IMinecraftAccessor;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.event.TickEvent;
@@ -12,6 +11,16 @@ import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Key handler: L toggles mod menu.
+ * 
+ * We NEVER call Minecraft.getInstance(), mc.screen, or mc.setScreen() here.
+ * All those methods have SRG name issues in production (m_91087_ etc).
+ * 
+ * Instead, MinecraftMixin captures the instance at init and implements
+ * IMinecraftAccessor.examplemod$toggleScreen() where all Minecraft
+ * field/method references are correctly remapped by the mixin processor.
+ */
 @Mod.EventBusSubscriber(modid = ExampleMod.MODID, value = Dist.CLIENT)
 public final class ClientInputEvents {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClientInputEvents.class);
@@ -32,22 +41,16 @@ public final class ClientInputEvents {
         pendingToggle = false;
 
         try {
-            // Get Minecraft instance captured by MinecraftMixin — no SRG issues
             Object mcObj = ExampleMod.mcInstance;
             if (mcObj == null) {
-                LOGGER.warn("[Mod] Minecraft instance not yet captured");
+                LOGGER.warn("[Mod] Minecraft instance not yet captured by mixin");
                 return;
             }
 
-            Minecraft mc = (Minecraft) mcObj;
-
-            if (mc.screen instanceof ModMenuScreen) {
-                mc.setScreen((Screen) null);
-                LOGGER.info("[Mod] Menu closed");
-            } else if (mc.screen == null) {
-                mc.setScreen(new ModMenuScreen());
-                LOGGER.info("[Mod] Menu opened");
-            }
+            // Cast to our interface — this calls into the mixin where
+            // screen/setScreen are properly remapped
+            ((IMinecraftAccessor) mcObj).examplemod$toggleScreen();
+            LOGGER.info("[Mod] Menu toggled via mixin");
         } catch (Throwable t) {
             LOGGER.error("[Mod] Failed to toggle menu", t);
         }
