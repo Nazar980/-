@@ -1,6 +1,7 @@
 package edu.unl.csce466.client;
 
 import edu.unl.csce466.ExampleMod;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.InputEvent;
@@ -31,19 +32,12 @@ public final class ClientInputEvents {
         pendingToggle = false;
 
         try {
-            Object mc = ExampleMod.mcInstance;
-            if (mc == null) {
-                LOGGER.warn("[Mod] Minecraft instance not captured yet");
-                return;
-            }
-
-            Screen currentScreen = ScreenHelper.getScreen(mc);
-
-            if (currentScreen instanceof ModMenuScreen) {
-                ScreenHelper.setScreen(mc, null);
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.screen instanceof ModMenuScreen) {
+                mc.setScreen((Screen) null);
                 LOGGER.info("[Mod] Menu closed");
-            } else if (currentScreen == null) {
-                ScreenHelper.setScreen(mc, new ModMenuScreen());
+            } else if (mc.screen == null) {
+                mc.setScreen(new ModMenuScreen());
                 LOGGER.info("[Mod] Menu opened");
             }
         } catch (Throwable t) {

@@ -1,21 +1,11 @@
 package edu.unl.csce466.mixins;
 
-import edu.unl.csce466.ExampleMod;
-import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Minimal mixin — only captures `this` reference at construction.
- * No @Shadow, no field access, no method calls on Minecraft.
+ * Empty placeholder mixin. No longer needed since SRG mappings
+ * now match runtime, so Minecraft.getInstance() works directly.
  */
-@Mixin(Minecraft.class)
+@Mixin(net.minecraft.client.Minecraft.class)
 public abstract class MinecraftMixin {
-
-    @Inject(method = "<init>", at = @At("RETURN"))
-    private void onInit(CallbackInfo ci) {
-        ExampleMod.mcInstance = this;
-    }
 }
