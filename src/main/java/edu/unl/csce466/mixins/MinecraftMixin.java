@@ -1,15 +1,22 @@
 package edu.unl.csce466.mixins;
 
+import edu.unl.csce466.ExampleMod;
+import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Compatibility no-op mixin.
- *
- * Older versions of this project used this class to cache the client instance.
- * That code was removed because direct client API calls were crashing in the
- * launcher runtime mappings. Keep this class empty so stale project files/configs
- * cannot break compilation.
+ * Captures the Minecraft instance at construction time via mixin.
+ * This avoids the SRG mapping issue with Minecraft.getInstance() (m_91087_)
+ * which doesn't exist in 1.21.4 production runtime.
  */
-@Mixin(net.minecraft.client.Minecraft.class)
+@Mixin(Minecraft.class)
 public abstract class MinecraftMixin {
+
+    @Inject(method = "<init>", at = @At("RETURN"))
+    private void onInit(CallbackInfo ci) {
+        ExampleMod.mcInstance = this;
+    }
 }

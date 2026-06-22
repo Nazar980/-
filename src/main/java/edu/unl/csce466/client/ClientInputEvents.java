@@ -1,6 +1,8 @@
 package edu.unl.csce466.client;
 
 import edu.unl.csce466.ExampleMod;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.event.TickEvent;
@@ -30,86 +32,20 @@ public final class ClientInputEvents {
         pendingToggle = false;
 
         try {
-            // Use GLFW directly to get the window handle — no Minecraft class methods needed
-            long window = GLFW.glfwGetCurrentContext();
-            if (window == 0L) return;
-
-            // Get Minecraft instance via reflection to avoid SRG mapping issues
-            Class<?> mcClass = Class.forName("net.minecraft.client.Minecraft");
-            
-            // Try multiple possible method names for getInstance()
-            Object mc = null;
-            for (String name : new String[]{"getInstance", "m_91087_", "m_91105_"}) {
-                try {
-                    java.lang.reflect.Method method = mcClass.getDeclaredMethod(name);
-                    method.setAccessible(true);
-                    mc = method.invoke(null);
-                    if (mc != null) break;
-                } catch (NoSuchMethodException ignored) {}
-            }
-            
-            if (mc == null) {
-                // Last resort: try the field "instance" or similar
-                for (java.lang.reflect.Field f : mcClass.getDeclaredFields()) {
-                    if (java.lang.reflect.Modifier.isStatic(f.getModifiers()) && mcClass.isAssignableFrom(f.getType())) {
-                        f.setAccessible(true);
-                        mc = f.get(null);
-                        if (mc != null) break;
-                    }
-                }
-            }
-            
-            if (mc == null) {
-                LOGGER.error("[Mod] Cannot find Minecraft instance");
+            // Get Minecraft instance captured by MinecraftMixin — no SRG issues
+            Object mcObj = ExampleMod.mcInstance;
+            if (mcObj == null) {
+                LOGGER.warn("[Mod] Minecraft instance not yet captured");
                 return;
             }
 
-            // Get current screen
-            java.lang.reflect.Field screenField = null;
-            for (java.lang.reflect.Field f : mcClass.getDeclaredFields()) {
-                if (f.getType().getName().equals("net.minecraft.client.gui.screens.Screen")) {
-                    screenField = f;
-                    break;
-                }
-            }
-            if (screenField == null) {
-                // Try superclass
-                for (java.lang.reflect.Field f : mcClass.getFields()) {
-                    if (f.getType().getName().contains("Screen")) {
-                        screenField = f;
-                        break;
-                    }
-                }
-            }
+            Minecraft mc = (Minecraft) mcObj;
 
-            Object currentScreen = null;
-            if (screenField != null) {
-                screenField.setAccessible(true);
-                currentScreen = screenField.get(mc);
-            }
-
-            // Find setScreen method
-            java.lang.reflect.Method setScreenMethod = null;
-            Class<?> screenClass = Class.forName("net.minecraft.client.gui.screens.Screen");
-            for (java.lang.reflect.Method m : mcClass.getDeclaredMethods()) {
-                Class<?>[] params = m.getParameterTypes();
-                if (params.length == 1 && screenClass.isAssignableFrom(params[0]) && m.getReturnType() == void.class) {
-                    setScreenMethod = m;
-                    break;
-                }
-            }
-            
-            if (setScreenMethod == null) {
-                LOGGER.error("[Mod] Cannot find setScreen method");
-                return;
-            }
-            setScreenMethod.setAccessible(true);
-
-            if (currentScreen instanceof ModMenuScreen) {
-                setScreenMethod.invoke(mc, (Object) null);
+            if (mc.screen instanceof ModMenuScreen) {
+                mc.setScreen((Screen) null);
                 LOGGER.info("[Mod] Menu closed");
-            } else if (currentScreen == null) {
-                setScreenMethod.invoke(mc, new ModMenuScreen());
+            } else if (mc.screen == null) {
+                mc.setScreen(new ModMenuScreen());
                 LOGGER.info("[Mod] Menu opened");
             }
         } catch (Throwable t) {
