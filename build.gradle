@@ -1,0 +1,95 @@
+plugins {
+    id "fabric-loom" version "1.7-SNAPSHOT"
+    id "com.github.johnrengelman.shadow" version "7.0.0"
+}
+
+apply plugin: 'maven-publish'
+
+sourceCompatibility = JavaVersion.VERSION_21
+targetCompatibility = JavaVersion.VERSION_21
+
+archivesBaseName = project.archives_base_name
+version = project.mod_version
+group = project.maven_group
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+    maven { url = "https://maven.fabricmc.net/" }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    implementation 'com.google.code.findbugs:jsr305:3.0.2'
+
+    implementation "io.github.spair:imgui-java-binding:${project.imguiVersion}"
+    shadow "io.github.spair:imgui-java-binding:${project.imguiVersion}"
+    implementation "io.github.spair:imgui-java-lwjgl3:${project.imguiVersion}"
+    shadow "io.github.spair:imgui-java-lwjgl3:${project.imguiVersion}"
+
+    implementation "io.github.spair:imgui-java-natives-windows:${project.imguiVersion}"
+    shadow "io.github.spair:imgui-java-natives-windows:${project.imguiVersion}"
+    implementation "io.github.spair:imgui-java-natives-linux:${project.imguiVersion}"
+    shadow "io.github.spair:imgui-java-natives-linux:${project.imguiVersion}"
+    implementation "io.github.spair:imgui-java-natives-macos:${project.imguiVersion}"
+    shadow "io.github.spair:imgui-java-natives-macos:${project.imguiVersion}"
+}
+
+processResources {
+    filesMatching("fabric.mod.json") {
+        expand "version": project.mod_version,
+                "minecraft_version": project.minecraft_version,
+                "loader_version": project.loader_version,
+                "fabric_version": project.fabric_version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = "UTF-8"
+    it.options.release = 21
+}
+
+java {
+    withSourcesJar()
+}
+
+jar {
+    if (file("LICENSE").exists()) {
+        from("LICENSE") {
+            rename { "${it}_${project.archivesBaseName}" }
+        }
+    }
+}
+
+shadowJar {
+    configurations = [project.configurations.shadow]
+    dependencies {
+        exclude(dependency('org.lwjgl:lwjgl'))
+        exclude(dependency('org.lwjgl:lwjgl-glfw'))
+        exclude(dependency('org.lwjgl:lwjgl-opengl'))
+    }
+}
+
+remapJar {
+    dependsOn shadowJar
+    input.set shadowJar.archiveFile.get()
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifact(jar.archivePath) {
+                builtBy remapJar
+            }
+            artifact(sourcesJar) {
+                builtBy remapSourcesJar
+            }
+        }
+    }
+    repositories {
+    }
+}
