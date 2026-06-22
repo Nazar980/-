@@ -25,6 +25,7 @@ public final class ScreenHelper {
             Class<?> mcClass = mc.getClass();
             Class<?> screenClass = Screen.class;
 
+            // Find screen field
             for (Field f : mcClass.getFields()) {
                 if (f.getType() == screenClass) {
                     SCREEN_FIELD = f;
@@ -32,28 +33,51 @@ public final class ScreenHelper {
                 }
             }
 
+            // Find ALL void(Screen) methods and log them
             List<Method> candidates = new ArrayList<>();
             for (Method m : mcClass.getDeclaredMethods()) {
                 if (m.getParameterCount() == 1
                     && m.getParameterTypes()[0] == screenClass
                     && m.getReturnType() == void.class) {
                     candidates.add(m);
+                    LOGGER.info("[Mod] Candidate: {} modifiers={} public={}",
+                        m.getName(), m.getModifiers(), Modifier.isPublic(m.getModifiers()));
                 }
             }
+
+            // Strategy: setScreen is public, disconnect is also public but takes
+            // Screen as a parameter for a different purpose.
+            // In 1.21.4 SRG, setScreen and disconnect both accept Screen.
+            // Key difference: disconnect internally calls runTick/polls events,
+            // setScreen just assigns the field. We need the SHORTER one.
+            // Best heuristic: pick the one that is NOT the last candidate
+            // (disconnect is usually defined after setScreen in the class)
+            
+            // First: try to find one that's NOT named disconnect (works if not obfuscated)
             for (Method m : candidates) {
-                if (Modifier.isPublic(m.getModifiers())) {
+                String name = m.getName();
+                if (!name.equals("disconnect") && !name.contains("isconnect")) {
                     m.setAccessible(true);
                     SET_SCREEN_METHOD = m;
+                    LOGGER.info("[Mod] Selected (not-disconnect): {}", name);
                     break;
                 }
             }
-            if (SET_SCREEN_METHOD == null && !candidates.isEmpty()) {
-                Method m = candidates.get(candidates.size() - 1);
-                m.setAccessible(true);
-                SET_SCREEN_METHOD = m;
+
+            // If all are obfuscated (m_XXXXX_), pick the FIRST public one
+            // In bytecode order, setScreen comes before disconnect
+            if (SET_SCREEN_METHOD == null) {
+                for (Method m : candidates) {
+                    if (Modifier.isPublic(m.getModifiers())) {
+                        m.setAccessible(true);
+                        SET_SCREEN_METHOD = m;
+                        LOGGER.info("[Mod] Selected (first public): {}", m.getName());
+                        break;
+                    }
+                }
             }
 
-            LOGGER.info("[Mod] screen={}, setScreen={}", 
+            LOGGER.info("[Mod] Final: screen={}, setScreen={}",
                 SCREEN_FIELD != null ? SCREEN_FIELD.getName() : "NULL",
                 SET_SCREEN_METHOD != null ? SET_SCREEN_METHOD.getName() : "NULL");
         } catch (Throwable t) {
@@ -69,7 +93,18 @@ public final class ScreenHelper {
 
     public static void setScreen(Object mc, Screen screen) {
         init(mc);
-        if (SET_SCREEN_METHOD == null) return;
+        if (SET_SCREEN_METHOD == null) {
+            // Ultimate fallback: directly set the field
+            if (SCREEN_FIELD != null) {
+                try {
+                    SCREEN_FIELD.set(mc, screen);
+                    LOGGER.info("[Mod] Used field fallback");
+                } catch (Throwable t) {
+                    LOGGER.error("[Mod] Field fallback failed", t);
+                }
+            }
+            return;
+        }
         try { SET_SCREEN_METHOD.invoke(mc, screen); } catch (Throwable t) { LOGGER.error("[Mod] setScreen failed", t); }
     }
 }
