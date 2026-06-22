@@ -1,13 +1,11 @@
 package edu.unl.csce466.imgui;
-
 import java.util.ArrayList;
 import java.util.Objects;
 import imgui.ImGui;
 import imgui.flag.ImGuiConfigFlags;
 import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
-import net.minecraft.client.Minecraft;
-
+import org.lwjgl.glfw.GLFW;
 public class ImGuiRenderer {
     private static ImGuiRenderer _INSTANCE = null;
     
@@ -26,9 +24,8 @@ public class ImGuiRenderer {
         ImGui.createContext();
         config.execute();
         
-        // Исправлено: прямой доступ к окну через Minecraft.getInstance().getWindow().getWindow()
-        // Это стандартный способ в 1.21.4
-        long windowPtr = Minecraft.getInstance().getWindow().getWindow();
+        // Исправление: используем GLFW напрямую, чтобы избежать зависимости от маппингов Minecraft
+        long windowPtr = GLFW.glfwGetCurrentContext();
         
         imGuiGlfw.init(windowPtr, true);
         imGuiGl.init("#version 410 core");
