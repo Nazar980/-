@@ -9,31 +9,23 @@ buildscript {
         classpath 'org.spongepowered:mixingradle:0.7-SNAPSHOT'
     }
 }
-
 plugins {
     id 'eclipse'
     id 'maven-publish'
 }
 apply plugin: 'net.minecraftforge.gradle'
 apply plugin: 'org.spongepowered.mixin'
-
 version = '1.0'
 group = 'edu.unl.csce466'
 archivesBaseName = 'csce466-mod'
-
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
-
 println "Java: ${System.getProperty 'java.version'}"
-
 jarJar.enable()
-
 tasks.named('jarJar').configure {
     finalizedBy 'reobfJarJar'
 }
-
 minecraft {
     mappings channel: 'official', version: '1.21.4'
-
     runs {
         client {
             workingDirectory project.file('run')
@@ -42,7 +34,7 @@ minecraft {
             property 'mixin.env.remapRefMap', 'true'
             property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
             mods {
-                csce466mod {
+                examplemod {
                     source sourceSets.main
                 }
             }
@@ -52,16 +44,14 @@ minecraft {
             property 'forge.logging.markers', 'REGISTRIES'
             property 'forge.logging.console.level', 'debug'
             mods {
-                csce466mod {
+                examplemod {
                     source sourceSets.main
                 }
             }
         }
     }
 }
-
 sourceSets.main.resources { srcDir 'src/generated/resources' }
-
 repositories {
     mavenCentral()
     maven { url = "https://maven.minecraftforge.net" }
@@ -69,19 +59,15 @@ repositories {
     maven { url 'https://repo.spongepowered.org/repository/maven-public/' }
     maven { url 'https://jitpack.io' }
 }
-
 ext {
     // Обновлено до версии, совместимой с LWJGL 3.3.3 (используется в MC 1.21.4)
     // 1.87.5 - последняя стабильная версия для LWJGL 3.3.x
     imguiVersion = '1.87.5'
     lwjglVersion = '3.3.3'
 }
-
 dependencies {
     minecraft 'net.minecraftforge:forge:1.21.4-54.1.16'
-
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
-
     // Явно исключаем все транзитивные LWJGL зависимости из imgui
     // и используем те, что предоставляет Minecraft
     ['binding', 'lwjgl3', 'natives-linux', 'natives-windows', 'natives-macos'].each { String module ->
@@ -104,14 +90,12 @@ dependencies {
     implementation "org.lwjgl:lwjgl-glfw:${lwjglVersion}"
     implementation "org.lwjgl:lwjgl-opengl:${lwjglVersion}"
 }
-
 mixin {
     add sourceSets.main, 'forge-mixin.refmap.json'
     config 'forge-mixin.json'
     debug.verbose = true
     debug.export = true
 }
-
 jar {
     manifest {
         attributes([
@@ -125,31 +109,16 @@ jar {
         ])
     }
 }
-
 jar.finalizedBy('reobfJar')
-
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
-
 tasks.withType(ProcessResources).configureEach {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
-
 tasks.named('processResources', ProcessResources).configure {
     dependsOn tasks.named('compileJava')
     from("${buildDir}/tmp/compileJava/mixin.refmap.json") {
         rename { 'forge-mixin.refmap.json' }
-    }
-}
-
-// Стратегия разрешения конфликтов
-dependencies {
-    components {
-        all { ComponentMetadataDetails details ->
-            if (details.group == 'io.github.spair' && details.module.name.startsWith('imgui-java')) {
-                details.statusScheme = ['release']
-            }
-        }
     }
 }
