@@ -8,7 +8,7 @@
         "RenderSystemMixin"
     ],
     "injectors": {
-        "defaultRequire": 1
+        "defaultRequire": 0
     },
     "refmap": "forge-mixin.refmap.json"
 }

@@ -1,7 +1,7 @@
 package edu.unl.csce466.client;
 
 import edu.unl.csce466.ExampleMod;
-import edu.unl.csce466.imgui.ImGuiRenderer;
+import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -10,12 +10,14 @@ import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Opens the native Minecraft mod menu screen when L is pressed.
+ */
 @Mod.EventBusSubscriber(modid = ExampleMod.MODID, value = Dist.CLIENT)
 public final class ClientInputEvents {
     private static final Logger LOGGER = LoggerFactory.getLogger(ClientInputEvents.class);
 
-    private ClientInputEvents() {
-    }
+    private ClientInputEvents() {}
 
     @SubscribeEvent
     public static void onKeyInput(InputEvent.Key event) {
@@ -23,8 +25,19 @@ public final class ClientInputEvents {
             return;
         }
 
-        ImGuiRenderer renderer = ImGuiRenderer.getInstance();
-        renderer.toggleMenu();
-        LOGGER.info("[ImGui] Menu toggled with L: {}", renderer.isMenuVisible() ? "visible" : "hidden");
+        Minecraft mc = Minecraft.getInstance();
+
+        // If menu is already open, close it
+        if (mc.screen instanceof ModMenuScreen) {
+            mc.setScreen(null);
+            LOGGER.info("[Mod] Menu closed with L");
+            return;
+        }
+
+        // If no screen is open (player is in game), open our menu
+        if (mc.screen == null) {
+            mc.setScreen(new ModMenuScreen());
+            LOGGER.info("[Mod] Menu opened with L");
+        }
     }
 }
