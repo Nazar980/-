@@ -11,7 +11,7 @@ import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
@@ -48,6 +48,7 @@ public class ExampleMod {
 
     public static final ImGuiScreen IMGUI_SCREEN = ImGuiScreen.getInstance();
 
+    @SuppressWarnings("removal")
     public ExampleMod() {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
 
@@ -65,7 +66,7 @@ public class ExampleMod {
             System.out.println("Zeus Activated");
             Player player = Minecraft.getInstance().player;
             if (player != null) {
-                player.sendSystemMessage(Component.literal("You feel a surge of electricity course through your veins..."));
+                player.displayClientMessage(Component.literal("You feel a surge of electricity course through your veins..."), false);
             }
             ModEvents.ForgeEvents.start = true;
         }
@@ -92,7 +93,7 @@ public class ExampleMod {
             Player player = Minecraft.getInstance().player;
             if (player != null) {
                 ItemStack i = new ItemStack(Items.STICK, 1);
-                i.enchant(Enchantment.byId(16), 100);
+                i.enchant(Enchantments.SHARPNESS, 100);
                 ItemHandlerHelper.giveItemToPlayer(player, i);
             }
         }

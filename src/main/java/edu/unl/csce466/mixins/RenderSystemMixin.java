@@ -25,7 +25,8 @@ public abstract class RenderSystemMixin {
         });
     }
     
-    // Самый надёжный вариант для 1.21.4
+    // CORRECT for Minecraft 1.21.4
+    // Target by method NAME only. This is the most reliable way.
     @Inject(method = "flipFrame", at = @At("HEAD"))
     private static void flipFrame(long window, CallbackInfo cbi) {
         RenderSystem.recordRenderCall(() -> {
