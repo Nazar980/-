@@ -25,10 +25,14 @@ public abstract class RenderSystemMixin {
         });
     }
     
-    // FIXED for 1.21.4 - use the base flipFrame(J)V method only.
-    // This signature is always present and avoids any TracyFrameCapturer issues.
-    @Inject(at = @At(value = "HEAD"), method = "flipFrame(J)V", remap = true)
-    private static void flipFrame(long window, CallbackInfo cbi) {
+    // CORRECT for Minecraft 1.21.4
+    // The actual method is flipFrame(long, TracyFrameCapturer)
+    // Use full internal name in the descriptor + Object as parameter type
+    // (this prevents "package net.minecraft.client.util.tracy does not exist")
+    @Inject(at = @At(value = "HEAD"), 
+            method = "flipFrame(JLnet/minecraft/client/util/tracy/TracyFrameCapturer;)V", 
+            remap = true)
+    private static void flipFrame(long window, Object tracyCapturer, CallbackInfo cbi) {
         RenderSystem.recordRenderCall(() -> {
             ImGuiRenderer.getInstance().render();
         });
