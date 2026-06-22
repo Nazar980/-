@@ -1,0 +1,94 @@
+plugins {
+    id 'eclipse'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[6.0.24,6.2)'
+}
+
+version = '1.0'
+group = 'edu.unl.csce466'
+archivesBaseName = 'csce466-mod'
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+minecraft {
+    mappings channel: 'official', version: '1.21.4'
+
+    runs {
+        client {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            mods {
+                examplemod {
+                    source sourceSets.main
+                }
+            }
+        }
+        server {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            mods {
+                examplemod {
+                    source sourceSets.main
+                }
+            }
+        }
+    }
+}
+
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+repositories {
+    mavenCentral()
+    maven { url = "https://maven.minecraftforge.net" }
+    maven { url "https://raw.githubusercontent.com/kotlin-graphics/mary/master" }
+    maven { url 'https://repo.spongepowered.org/repository/maven-public/' }
+    maven { url 'https://jitpack.io' }
+}
+
+ext {
+    imguiVersion = '1.86.10'
+}
+
+dependencies {
+    minecraft 'net.minecraftforge:forge:1.21.4-52.0.28'
+    
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+    
+    // ImGui Java (Spair)
+    ['binding', 'lwjgl3', 'natives-linux', 'natives-windows', 'natives-macos'].each {
+        minecraftLibrary (group: "io.github.spair", name: "imgui-java-${it}", version: "$imguiVersion") {
+            exclude group: "org.lwjgl"
+        }
+    }
+}
+
+mixin {
+    add sourceSets.main, 'forge-mixin.refmap.json'
+    config 'forge-mixin.json'
+    debug.verbose = true
+    debug.export = true
+}
+
+jar {
+    manifest {
+        attributes([
+            "Specification-Title": "examplemod",
+            "Specification-Vendor": "examplemodsareus",
+            "Specification-Version": "1",
+            "Implementation-Title": project.name,
+            "Implementation-Version": project.jar.archiveVersion,
+            "Implementation-Vendor": "examplemodsareus",
+            "MixinConfigs": "forge-mixin.json"
+        ])
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.withType(ProcessResources).configureEach {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}

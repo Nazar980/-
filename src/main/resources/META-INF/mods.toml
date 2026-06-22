@@ -1,0 +1,25 @@
+modLoader="javafml"
+loaderVersion="[52,)"
+license="All rights reserved"
+
+[[mods]]
+modId="examplemod"
+version="1.0.0"
+displayName="Example Mod"
+logoFile="examplemod.png"
+authors="Root3287"
+description="Minecraft 1.21.4 port with ImGui rendered via Mixins"
+
+[[dependencies.examplemod]]
+modId="forge"
+mandatory=true
+versionRange="[52,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.examplemod]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.21.4,1.22)"
+ordering="NONE"
+side="BOTH"
