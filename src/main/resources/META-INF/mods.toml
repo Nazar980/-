@@ -1,25 +1,25 @@
 modLoader="javafml"
-loaderVersion="[52,)"
-license="All rights reserved"
+loaderVersion="[54,)"
+license="MIT"
 
 [[mods]]
 modId="examplemod"
 version="1.0.0"
-displayName="Example Mod"
-logoFile="examplemod.png"
-authors="Root3287"
-description="Minecraft 1.21.4 port with ImGui rendered via Mixins"
+displayName="CSCE466 ImGui Mod"
+description='''
+Forge 1.21.4 mod with ImGui renderer.
+'''
 
 [[dependencies.examplemod]]
 modId="forge"
 mandatory=true
-versionRange="[52,)"
+versionRange="[54.1.16,)"
 ordering="NONE"
 side="BOTH"
 
 [[dependencies.examplemod]]
 modId="minecraft"
 mandatory=true
-versionRange="[1.21.4,1.22)"
+versionRange="[1.21.4,1.21.5)"
 ordering="NONE"
 side="BOTH"
