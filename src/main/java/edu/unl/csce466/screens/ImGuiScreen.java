@@ -23,7 +23,8 @@ public class ImGuiScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
+        // Не вызываем super.render для прозрачного фона (опционально)
+        // super.render(guiGraphics, mouseX, mouseY, partialTick);
 
         ImGuiRenderer.getInstance().draw(() -> {
             ImGui.begin("ImGui Menu");
@@ -31,5 +32,15 @@ public class ImGuiScreen extends Screen {
             ImGui.text("Press ESC to close");
             ImGui.end();
         });
+    }
+    
+    @Override
+    public boolean shouldCloseOnEsc() {
+        return true;
+    }
+    
+    @Override
+    public boolean isPauseScreen() {
+        return false;
     }
 }
