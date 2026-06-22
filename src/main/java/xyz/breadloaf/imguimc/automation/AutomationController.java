@@ -255,15 +255,15 @@ public class AutomationController {
             return;
         }
 
+        if (craftingPlacementPhase != 0) {
+            continueCraftPlacement(client, menu);
+            return;
+        }
+
         if (!menu.getCarried().isEmpty()) {
             returnCarriedStackToInventory(client, menu);
             status = "Returning carried item";
             cooldownTicks = 4;
-            return;
-        }
-
-        if (craftingPlacementPhase != 0) {
-            continueCraftPlacement(client, menu);
             return;
         }
 
