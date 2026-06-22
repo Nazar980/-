@@ -1,0 +1,29 @@
+modLoader="javafml"
+loaderVersion="[54,)"
+license="All Rights Reserved"
+showAsResourcePack=false
+
+[[mods]]
+modId="examplemod"
+version="${file.jarVersion}"
+displayName="Example Mod"
+authors="csce466"
+description='''
+ImGui overlay for Minecraft 1.21.4 Forge.
+Press L to toggle the menu.
+'''
+displayTest="MATCH_VERSION"
+
+[[dependencies.examplemod]]
+modId="forge"
+mandatory=true
+versionRange="[54,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.examplemod]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.21.4,1.22)"
+ordering="NONE"
+side="BOTH"
