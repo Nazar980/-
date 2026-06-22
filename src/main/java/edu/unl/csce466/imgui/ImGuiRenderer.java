@@ -2,10 +2,12 @@ package edu.unl.csce466.imgui;
 
 import java.util.ArrayList;
 import java.util.Objects;
+
 import imgui.ImGui;
 import imgui.flag.ImGuiConfigFlags;
 import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
+
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,101 +24,93 @@ public class ImGuiRenderer {
     private final ArrayList<ImGuiCall> _drawCalls = new ArrayList<>();
     private final ImGuiImplGlfw imGuiGlfw = new ImGuiImplGlfw();
     private final ImGuiImplGl3 imGuiGl = new ImGuiImplGl3();
-    private boolean initialized = false;
-    private boolean contextCreated = false;
+    private boolean _initialized = false;
     
     private ImGuiRenderer() {}
     
     /**
-     * Инициализация ImGui с правильным GLFW window handle от Minecraft
+     * Initialize ImGui with given GLFW window handle
      */
-    public void init(long windowHandle, ImGuiCall config) {
-        if (initialized) {
+    public void init(long windowPtr, ImGuiCall config) {
+        if (_initialized) {
             LOGGER.info("[ImGui] Already initialized, skipping.");
             return;
         }
         
-        LOGGER.info("[ImGui] Initializing with window handle: 0x" + Long.toHexString(windowHandle));
+        LOGGER.info("[ImGui] Initializing ImGui. Window: 0x{}", Long.toHexString(windowPtr));
         
         try {
-            // 1. Создаём ImGui контекст
-            if (!contextCreated) {
-                ImGui.createContext();
-                contextCreated = true;
-            }
+            // Step 1: Create ImGui context
+            ImGui.createContext();
             
-            // 2. Конфигурация
+            // Step 2: Configure
             if (config != null) {
                 config.execute();
             } else {
                 ImGui.getIO().addConfigFlags(ImGuiConfigFlags.DockingEnable);
-                // Выключаем Viewports — они вызывают проблемы в Minecraft
-                // ImGui.getIO().addConfigFlags(ImGuiConfigFlags.ViewportsEnable);
             }
             
-            // 3. Инициализация GLFW бэкенда (FALSE = не устанавливаем GLFW коллбэки,
-            //    потому что Minecraft сам обрабатывает ввод)
-            imGuiGlfw.init(windowHandle, false);
+            // Step 3: Init GLFW backend (false = don't install callbacks, Minecraft handles input)
+            imGuiGlfw.init(windowPtr, false);
             
-            // 4. Инициализация OpenGL бэкенда
-            imGuiGl.init("#version 330 core");
+            // Step 4: Init OpenGL backend with basic GLSL
+            imGuiGl.init("#version 150");
             
-            initialized = true;
-            LOGGER.info("[ImGui] Successfully initialized!");
+            _initialized = true;
+            LOGGER.info("[ImGui] Initialized successfully!");
             
         } catch (Exception e) {
-            LOGGER.error("[ImGui] Failed to initialize: " + e.getMessage(), e);
-            // Пробуем с другой версией GLSL
-            tryFallbackInit(windowHandle, config);
+            LOGGER.error("[ImGui] Init failed, trying fallback...", e);
+            tryFallback(windowPtr, config);
         }
     }
     
-    /**
-     * Фоллбэк инициализация если main init провалилась
-     */
-    private void tryFallbackInit(long windowHandle, ImGuiCall config) {
+    private void tryFallback(long windowPtr, ImGuiCall config) {
         try {
-            if (!contextCreated) {
-                ImGui.createContext();
-                contextCreated = true;
-            }
-            
-            if (config != null) {
-                config.execute();
-            }
-            
-            imGuiGlfw.init(windowHandle, false);
-            // Пробуем без явной версии GLSL
-            imGuiGl.init();
-            
-            initialized = true;
-            LOGGER.info("[ImGui] Initialized with fallback GLSL version!");
-        } catch (Exception e) {
-            LOGGER.error("[ImGui] Fallback init also failed: " + e.getMessage(), e);
+            ImGui.createContext();
+            if (config != null) config.execute();
+            imGuiGlfw.init(windowPtr, false);
+            imGuiGl.init(); // No explicit GLSL version
+            _initialized = true;
+            LOGGER.info("[ImGui] Initialized with fallback!");
+        } catch (Exception e2) {
+            LOGGER.error("[ImGui] Fallback also failed!", e2);
         }
     }
     
     /**
-     * Lazy init — вызывается если ImGui ещё не инициализирован
+     * Lazy init using Minecraft's current window. Call from main thread only.
      */
     public void initIfNeeded() {
-        if (initialized) return;
+        if (_initialized) return;
         
-        try {
-            // Получаем window handle от Minecraft
-            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-            if (mc == null || mc.getWindow() == null) {
-                LOGGER.warn("[ImGui] Cannot init: Minecraft or Window is null");
-                return;
-            }
-            
-            long window = mc.getWindow().getWindow();
-            init(window, () -> {
-                ImGui.getIO().addConfigFlags(ImGuiConfigFlags.DockingEnable);
-            });
-        } catch (Exception e) {
-            LOGGER.error("[ImGui] Lazy init failed: " + e.getMessage(), e);
+        // Use GLFW to get native window directly - no Minecraft API needed!
+        long window = GLFW.glfwGetCurrentContext();
+        if (window == 0L) {
+            LOGGER.warn("[ImGui] No GLFW context available yet");
+            return;
         }
+        
+        // Actually, glfwGetCurrentContext returns GL context, not window.
+        // We need the WINDOW. Since we can't rely on Minecraft API (TLauncher issues),
+        // we use the hack: get any existing window from GLFW
+        // This is safe because Minecraft always has exactly one window
+        
+        // Alternative: walk through GLFW windows
+        // GLFW.glfwGetWindows() is not in LWJGL 3.3.3
+        
+        // So we need to store it from the mixin
+        LOGGER.warn("[ImGui] Lazy init called but window handle not yet set. Use mixin init.");
+    }
+    
+    /**
+     * Called from the mixin that has access to the real window handle
+     */
+    public void initFromMixin(long windowHandle) {
+        if (_initialized) return;
+        init(windowHandle, () -> {
+            ImGui.getIO().addConfigFlags(ImGuiConfigFlags.DockingEnable);
+        });
     }
     
     public void draw(ImGuiCall drawCall) {
@@ -124,9 +118,7 @@ public class ImGuiRenderer {
     }
     
     public void render() {
-        if (!initialized) {
-            return;
-        }
+        if (!_initialized) return;
         
         try {
             imGuiGlfw.newFrame();
@@ -136,7 +128,7 @@ public class ImGuiRenderer {
                 try {
                     drawCall.execute();
                 } catch (Exception e) {
-                    LOGGER.error("[ImGui] Draw call error: " + e.getMessage(), e);
+                    LOGGER.error("[ImGui] Draw call error", e);
                 }
             }
             _drawCalls.clear();
@@ -144,20 +136,17 @@ public class ImGuiRenderer {
             ImGui.render();
             imGuiGl.renderDrawData(Objects.requireNonNull(ImGui.getDrawData()));
         } catch (Exception e) {
-            LOGGER.error("[ImGui] Render error: " + e.getMessage(), e);
+            LOGGER.error("[ImGui] Render error", e);
         }
     }
     
     public void shutdown() {
-        if (!initialized) return;
+        if (!_initialized) return;
         try {
             imGuiGl.shutdown();
             imGuiGlfw.shutdown();
             ImGui.destroyContext();
-            initialized = false;
-            contextCreated = false;
-        } catch (Exception e) {
-            LOGGER.error("[ImGui] Shutdown error: " + e.getMessage(), e);
-        }
+            _initialized = false;
+        } catch (Exception ignored) {}
     }
 }

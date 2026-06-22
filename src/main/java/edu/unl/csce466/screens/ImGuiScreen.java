@@ -18,15 +18,12 @@ public class ImGuiScreen extends Screen {
     }
 
     private ImGuiScreen() {
-        // FIX: используем Component.empty() вместо Component.literal()
-        // чтобы избежать NoSuchMethodError на TLauncher (проблема маппингов 1.21.4)
         super(Component.empty());
     }
     
     @Override
     public void init() {
         super.init();
-        // Инициализируем ImGui если ещё не инициализирован
         ImGuiRenderer.getInstance().initIfNeeded();
     }
 
@@ -36,7 +33,7 @@ public class ImGuiScreen extends Screen {
 
         ImGuiRenderer.getInstance().draw(() -> {
             ImGui.begin("ImGui Menu");
-            ImGui.text("ImGui is working on Minecraft 1.21.4!");
+            ImGui.text("ImGui works on MC 1.21.4!");
             ImGui.text("Press ESC to close");
             ImGui.end();
         });
