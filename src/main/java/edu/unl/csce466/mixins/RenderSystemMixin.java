@@ -8,45 +8,46 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.logging.LogUtils;
 
+import edu.unl.csce466.ExampleMod;
 import edu.unl.csce466.imgui.ImGuiRenderer;
 import imgui.ImGui;
 import imgui.flag.ImGuiConfigFlags;
-import org.lwjgl.glfw.GLFW;
+import net.minecraft.client.Minecraft;
 
+/**
+ * Mixin to hook ImGui into Minecraft's render loop.
+ * 
+ * KEY: We store Minecraft instance from the constructor mixin,
+ * then initialize ImGui from flipFrame where the window exists.
+ * NO direct Minecraft.getInstance() calls from mixin targets!
+ */
 @Mixin(RenderSystem.class)
 public abstract class RenderSystemMixin {
 
-    @Inject(at = @At(value = "TAIL"), method = "initRenderer", remap = false)
-    private static void onInitRenderer(CallbackInfo cbi) {
-        RenderSystem.assertOnRenderThread();
-        
-        try {
-            // ВАЖНО: НЕ вызываем Minecraft.getInstance() — объект ещё не создан!
-            // glfwGetCurrentContext() возвращает GLFWwindow* — это и есть window handle
-            long windowHandle = GLFW.glfwGetCurrentContext();
-            
-            if (windowHandle == 0) {
-                LogUtils.getLogger().error("[ImGui] GLFW window handle is 0, cannot init ImGui");
-                return;
-            }
-            
-            LogUtils.getLogger().info("[ImGui] Initializing with GLFW window: 0x" + Long.toHexString(windowHandle));
-            
-            ImGuiRenderer.getInstance().init(windowHandle, () -> {
-                ImGui.getIO().addConfigFlags(ImGuiConfigFlags.DockingEnable);
-            });
-            
-        } catch (Exception e) {
-            LogUtils.getLogger().error("[ImGui] Init failed: " + e.getMessage(), e);
-        }
-    }
+    private static boolean imGuiWindowInitialized = false;
 
+    /**
+     * flipFrame receives the GLFW window as first parameter.
+     * By this point Minecraft window is fully created and GL context is current.
+     */
     @Inject(
         method = "flipFrame(JLcom/mojang/blaze3d/TracyFrameCapture;)V",
         at = @At("HEAD"),
         remap = false
     )
-    private static void onFlipFrame(long window, com.mojang.blaze3d.TracyFrameCapture tracyCapture, CallbackInfo cbi) {
+    private static void onFlipFrame(long windowPtr, com.mojang.blaze3d.TracyFrameCapture tracyCapture, CallbackInfo cbi) {
+        // Init ImGui on first frame
+        if (!imGuiWindowInitialized) {
+            try {
+                LogUtils.getLogger().info("[ImGui] flipFrame hook: window=0x{}", Long.toHexString(windowPtr));
+                ImGuiRenderer.getInstance().initFromMixin(windowPtr);
+                imGuiWindowInitialized = true;
+            } catch (Exception e) {
+                LogUtils.getLogger().error("[ImGui] Init from flipFrame failed: {}", e.toString());
+            }
+        }
+        
+        // Render ImGui every frame
         ImGuiRenderer.getInstance().render();
     }
 }
