@@ -6,7 +6,7 @@
     "mixins": [],
     "client": [
         "RenderSystemMixin",
-        "MinecraftMixin"
+        "KeyboardHandlerMixin"
     ],
     "injectors": {
         "defaultRequire": 1
