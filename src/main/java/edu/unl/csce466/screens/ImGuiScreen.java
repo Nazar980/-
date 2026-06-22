@@ -16,7 +16,7 @@ public class ImGuiScreen extends Screen {
     }
 
     private ImGuiScreen() {
-        super(Component.literal("ImGui"));
+        super(net.minecraft.network.chat.Component.empty());
     }
     
     public void init() {}

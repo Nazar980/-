@@ -41,7 +41,10 @@ public class ImGuiRenderer {
         }
         
         imGuiGlfw.init(windowPtr, true);
-        imGuiGl.init("#version 330 core"); // Используем GLSL 3.3 для совместимости
+        imGuiGl.init("#version 330 core");
+        
+        // ВАЖНО: Собираем атлас шрифтов сразу после инициализации
+        ImGui.getIO().getFonts().build();
         
         initialized = true;
     }

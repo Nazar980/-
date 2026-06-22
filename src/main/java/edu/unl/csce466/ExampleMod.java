@@ -17,11 +17,21 @@ public class ExampleMod {
     public static final String MODID = "examplemod";
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    public static final ImGuiScreen IMGUI_SCREEN = ImGuiScreen.getInstance();
+    public static ImGuiScreen IMGUI_SCREEN;
 
     public ExampleMod() {
+        // Инициализируем экран лениво, чтобы избежать проблем с маппингами при загрузке класса
         MinecraftForge.EVENT_BUS.register(this);
-        MinecraftForge.EVENT_BUS.register(IMGUI_SCREEN);
+    }
+
+    @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
+    public static class ClientModEvents {
+        @SubscribeEvent
+        public static void onClientSetup(FMLClientSetupEvent event) {
+            LOGGER.info("ImGui initialized for Minecraft 1.21.4");
+            IMGUI_SCREEN = ImGuiScreen.getInstance();
+            IMGUI_SCREEN.init();
+        }
     }
 
     @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)

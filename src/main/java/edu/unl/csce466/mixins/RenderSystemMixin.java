@@ -15,25 +15,23 @@ import imgui.flag.ImGuiConfigFlags;
 @Mixin(RenderSystem.class)
 public abstract class RenderSystemMixin {
 
-    @Inject(at = @At(value = "TAIL"), method = "initRenderer", remap = false)
+    @Inject(at = @At(value = "TAIL"), method = "initRenderer", remap = true)
     private static void initRenderer(CallbackInfo cbi) {
         RenderSystem.assertOnRenderThread();
         LogUtils.getLogger().info("[ImGui] Initializing ImGui for Forge 1.21.4");
         ImGuiRenderer.getInstance().init(() -> {
-            ImGui.getIO().addConfigFlags(ImGuiConfigFlags.ViewportsEnable);
-            ImGui.getIO().addConfigFlags(ImGuiConfigFlags.DockingEnable);
+            imgui.ImGuiIO io = ImGui.getIO();
+            io.addConfigFlags(ImGuiConfigFlags.ViewportsEnable);
+            io.addConfigFlags(ImGuiConfigFlags.DockingEnable);
         });
     }
 
-    // Сигнатура для Minecraft 1.21.4
-    // flipFrame(long window, TracyFrameCapture tracyCapture)
     @Inject(
-        method = "flipFrame(JLcom/mojang/blaze3d/TracyFrameCapture;)V",
+        method = "flipFrame",
         at = @At("HEAD"),
-        remap = false
+        remap = true
     )
     private static void flipFrame(long window, com.mojang.blaze3d.TracyFrameCapture tracyCapture, CallbackInfo cbi) {
-        // Выполняем рендер ImGui перед flipFrame
         ImGuiRenderer.getInstance().render();
     }
 }
