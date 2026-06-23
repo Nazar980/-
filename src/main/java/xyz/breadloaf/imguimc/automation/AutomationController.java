@@ -463,23 +463,35 @@ public class AutomationController {
             return;
         }
 
-        // КРИТИЧЕСКИЙ ШАГ: ЗАБИРАЕМ ГОТОВУЮ КИРКУ ИЗ СЛОТА 0
+// КРИТИЧЕСКИЙ ШАГ: ЗАБИРАЕМ ГОТОВУЮ КИРКУ ИЗ СЛОТА 0
         ItemStack result = menu.slots.get(0).getItem();
         if (!result.isEmpty()) {
             if (isTargetPickaxe(result)) {
+                // ИСПРАВЛЕНИЕ ДЕСИНХРОНИЗАЦИИ: Если в курсоре мышки что-то зависло (например, палки),
+                // мы не сможем сделать Shift-клик по слоту результата. Сначала возвращаем это в инвентарь.
+                if (!menu.getCarried().isEmpty()) {
+                    returnCarriedStackToInventory(client, menu);
+                    status = "Clearing cursor before collecting target pickaxe";
+                    cooldownTicks = 3;
+                    return;
+                }
+
                 lastCraftedPickaxeName = normalizedItemName(result);
                 resetCraftingPlacement();
-                // Забираем с помощью QUICK_MOVE (Shift-клик) прямо в инвентарь
                 client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
-                setStage(Stage.EQUIP_PICKAXE, "Crafted and collected: " + lastCraftedPickaxeName, 5); // Повышенный кулдаун во избежание десинхронизаций
+                setStage(Stage.EQUIP_PICKAXE, "Crafted and collected: " + lastCraftedPickaxeName, 5);
             } else {
+                if (!menu.getCarried().isEmpty()) {
+                    returnCarriedStackToInventory(client, menu);
+                    cooldownTicks = 2;
+                    return;
+                }
                 resetCraftingPlacement();
                 client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
                 status = "Collected sub-resource from result slot";
                 cooldownTicks = 3;
             }
         }
-    }
 
     private void continueCraftPlacement(Minecraft client, CraftingMenu menu) {
         if (craftingPlacementPhase == 1) {
