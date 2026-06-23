@@ -777,3 +777,147 @@ public class AutomationController {
     private int findAnyLogSlot(AbstractContainerMenu menu) {
         int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
         for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
+            ItemStack stack = menu.slots.get(slotId).getItem();
+            if (!stack.isEmpty() && stack.is(net.minecraft.tags.ItemTags.LOGS)) return slotId;
+        }
+        return -1;
+    }
+
+    private int findAnyPlankSlot(AbstractContainerMenu menu) {
+        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
+        for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
+            ItemStack stack = menu.slots.get(slotId).getItem();
+            if (!stack.isEmpty() && stack.is(net.minecraft.tags.ItemTags.PLANKS)) return slotId;
+        }
+        return -1;
+    }
+
+    private boolean hasEmeraldPickaxe(Minecraft client) {
+        if (isTargetPickaxe(client.player.getMainHandItem())) return true;
+        for (ItemStack stack : client.player.getInventory().items) {
+            if (isTargetPickaxe(stack)) return true;
+        }
+        return false;
+    }
+
+    private int findTargetPickaxeSlot(AbstractContainerMenu menu) {
+        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
+        for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
+            ItemStack stack = menu.slots.get(slotId).getItem();
+            if (isTargetPickaxe(stack)) return slotId;
+        }
+        return -1;
+    }
+
+    private boolean isTargetPickaxe(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return false;
+        String normalizedName = normalizedItemName(stack);
+        if (!lastCraftedPickaxeName.isEmpty() && normalizedName.equals(lastCraftedPickaxeName)) return true;
+
+        String descriptionId = stack.getItem().getDescriptionId().toLowerCase(Locale.ROOT);
+        return descriptionId.contains("pickaxe") || normalizedName.contains("кирка") || normalizedName.contains("pickaxe");
+    }
+
+    private String normalizedItemName(ItemStack stack) {
+        return stack.getHoverName().getString().trim().toLowerCase(Locale.ROOT);
+    }
+
+    private int findInventorySlot(AbstractContainerMenu menu, Item item) {
+        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
+        for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
+            ItemStack stack = menu.slots.get(slotId).getItem();
+            if (!stack.isEmpty() && stack.getItem() == item) return slotId;
+        }
+        return -1;
+    }
+
+    private int findMergeableInventorySlot(AbstractContainerMenu menu, Item item) {
+        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
+        for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
+            ItemStack stack = menu.slots.get(slotId).getItem();
+            if (!stack.isEmpty() && stack.getItem() == item) return slotId;
+        }
+        return -1;
+    }
+
+    private int findEmptyInventorySlot(AbstractContainerMenu menu) {
+        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
+        for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
+            if (menu.slots.get(slotId).getItem().isEmpty()) return slotId;
+        }
+        return -1;
+    }
+
+    private void setStage(Stage newStage, String newStatus, int delayTicks) {
+        if (newStage == Stage.SEARCH_WOOD || newStage == Stage.SEARCH_EMERALDS || newStage == Stage.IDLE || newStage == Stage.EVALUATE) {
+            observedAuctionContainerId = -1;
+            observedAuctionMenuTicks = 0;
+        }
+        if (newStage != Stage.CRAFT_PICKAXE) {
+            resetCraftingPlacement();
+        }
+        stage = newStage;
+        status = newStatus;
+        cooldownTicks = delayTicks;
+        stageTicks = 0;
+    }
+
+    private String keyName(int key) {
+        return switch (key) {
+            case GLFW.GLFW_KEY_UNKNOWN -> "UNKNOWN";
+            case GLFW.GLFW_KEY_RIGHT_SHIFT -> "RIGHT SHIFT";
+            case GLFW.GLFW_KEY_LEFT_SHIFT -> "LEFT SHIFT";
+            case GLFW.GLFW_KEY_LEFT_CONTROL -> "LEFT CTRL";
+            case GLFW.GLFW_KEY_RIGHT_CONTROL -> "RIGHT CTRL";
+            case GLFW.GLFW_KEY_LEFT_ALT -> "LEFT ALT";
+            case GLFW.GLFW_KEY_RIGHT_ALT -> "RIGHT ALT";
+            case GLFW.GLFW_KEY_SPACE -> "SPACE";
+            case GLFW.GLFW_KEY_ENTER -> "ENTER";
+            case GLFW.GLFW_KEY_TAB -> "TAB";
+            case GLFW.GLFW_KEY_ESCAPE -> "ESC";
+            case GLFW.GLFW_KEY_F1 -> "F1";
+            case GLFW.GLFW_KEY_F2 -> "F2";
+            case GLFW.GLFW_KEY_F3 -> "F3";
+            case GLFW.GLFW_KEY_F4 -> "F4";
+            case GLFW.GLFW_KEY_F5 -> "F5";
+            case GLFW.GLFW_KEY_F6 -> "F6";
+            case GLFW.GLFW_KEY_F7 -> "F7";
+            case GLFW.GLFW_KEY_F8 -> "F8";
+            case GLFW.GLFW_KEY_F9 -> "F9";
+            case GLFW.GLFW_KEY_F10 -> "F10";
+            case GLFW.GLFW_KEY_F11 -> "F11";
+            case GLFW.GLFW_KEY_F12 -> "F12";
+            default -> {
+                String glfwName = GLFW.glfwGetKeyName(key, 0);
+                yield glfwName == null ? "KEY_" + key : glfwName.toUpperCase(Locale.ROOT);
+            }
+        };
+    }
+
+    private enum Stage {
+        IDLE,
+        EVALUATE,
+        
+        // Измененные стадии закупки дерева
+        SEARCH_WOOD,
+        WAIT_WOOD_SCREEN,
+        BUY_WOOD,
+        
+        SEARCH_EMERALDS,
+        WAIT_EMERALDS_SCREEN,
+        BUY_EMERALDS,
+        OPEN_CRAFTING,
+        WAIT_CRAFTING,
+        CRAFT_PICKAXE,
+        EQUIP_PICKAXE,
+        SELL_PICKAXE,
+        OPEN_AH_EXPIRED,
+        WAIT_AH_MAIN,
+        CLICK_ENDER_CHEST,
+        WAIT_STORAGE_MENU,
+        COLLECT_EXPIRED
+    }
+
+    private record AuctionCandidate(int slotId, long totalPrice, double pricePerItem, int stackCount) {
+    }
+}
