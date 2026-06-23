@@ -30,7 +30,7 @@ public class AutomationController {
     private final ImguimcConfig config = ImguimcConfig.get();
 
     private static final int AUCTION_PURCHASE_DELAY_TICKS = 200;
-    private static final int EXPIRED_CHECK_INTERVAL_TICKS = 200; // 10 секунд (20 тиков = 1 сек)
+    private static final int EXPIRED_CHECK_INTERVAL_TICKS = 200;
     
     private int currentActiveSales = 0;
     private int expiredCheckTimer = 0;
@@ -45,7 +45,6 @@ public class AutomationController {
     private int observedAuctionContainerId = -1;
     private int observedAuctionMenuTicks = 0;
     
-    // Переменные пошагового крафта кирки
     private int craftingPlacementPhase = 0;
     private int craftingSourceSlot = -1;
     private int craftingTargetSlot = -1;
@@ -55,14 +54,9 @@ public class AutomationController {
         return INSTANCE;
     }
 
-    /**
-     * Вызывай этот метод из миксина/лиссенера чата твоего мода!
-     * Перехватывает системные сообщения о покупке лота.
-     */
     public void handleChatMessage(String message) {
         if (!enabled) return;
         
-        // Регулярка под системный чат аукциона: "У Вас купили Изумрудная кирка за ..."
         if (message.contains("У Вас купили") && (message.contains("кирка") || message.contains("pickaxe"))) {
             if (currentActiveSales > 0) {
                 currentActiveSales--;
@@ -73,7 +67,6 @@ public class AutomationController {
 
     public void tick(Minecraft client) {
         if (client == null) return;
-
         if (!enabled) return;
 
         if (client.player == null || client.gameMode == null || client.level == null) {
@@ -81,12 +74,11 @@ public class AutomationController {
             return;
         }
 
-        // ПРИНУДИТЕЛЬНЫЙ ТАЙМЕР ПЕРЕПРОДАЖИ (Каждые 10 секунд вне зависимости ни от чего)
         expiredCheckTimer++;
         if (expiredCheckTimer >= EXPIRED_CHECK_INTERVAL_TICKS) {
             expiredCheckTimer = 0;
             if (client.player.containerMenu != client.player.inventoryMenu) {
-                client.player.closeContainer(); // Закрываем верстак или текущий AH
+                client.player.closeContainer();
             }
             setStage(Stage.OPEN_AH_EXPIRED, "Forced 10s expired items cleanup", 5);
             return;
@@ -175,7 +167,6 @@ public class AutomationController {
     }
 
     private void evaluateNextStage(Minecraft client) {
-        // Проверка лимита лотов по значению из инпута конфига
         if (currentActiveSales >= config.maxActiveSales) {
             setStage(Stage.IDLE, "Sales limit reached (" + currentActiveSales + "). Waiting for buys...", 20);
             return;
@@ -364,7 +355,6 @@ public class AutomationController {
 
         int sticks = countInventoryItem(client, Items.STICK);
 
-        // ШАГ 1: ПЕРЕРАБОТКА БРЁВЕН В ДОСКИ
         int logSlot = findAnyLogSlot(menu);
         if (logSlot != -1 && sticks < 2) {
             if (!menu.slots.get(0).getItem().isEmpty()) {
@@ -384,7 +374,6 @@ public class AutomationController {
             return;
         }
 
-        // ШАГ 2: МАССОВЫЙ КРАФТ ПАЛОК ИЗ ДОСОК
         int plankSlot = findAnyPlankSlot(menu);
         boolean slot1Ok = menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
         boolean slot4Ok = menu.slots.get(4).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
@@ -425,7 +414,6 @@ public class AutomationController {
             return;
         }
 
-        // ШАГ 3: СБОРКА КИРКИ
         int nextTargetSlot = findNextMissingRecipeSlot(menu);
         if (nextTargetSlot != -1 && sticks >= 2) {
             if (menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS) || menu.slots.get(4).getItem().is(net.minecraft.tags.ItemTags.PLANKS)) {
@@ -463,12 +451,9 @@ public class AutomationController {
             return;
         }
 
-// КРИТИЧЕСКИЙ ШАГ: ЗАБИРАЕМ ГОТОВУЮ КИРКУ ИЗ СЛОТА 0
         ItemStack result = menu.slots.get(0).getItem();
         if (!result.isEmpty()) {
             if (isTargetPickaxe(result)) {
-                // ИСПРАВЛЕНИЕ ДЕСИНХРОНИЗАЦИИ: Если в курсоре мышки что-то зависло (например, палки),
-                // мы не сможем сделать Shift-клик по слоту результата. Сначала возвращаем это в инвентарь.
                 if (!menu.getCarried().isEmpty()) {
                     returnCarriedStackToInventory(client, menu);
                     status = "Clearing cursor before collecting target pickaxe";
@@ -492,6 +477,7 @@ public class AutomationController {
                 cooldownTicks = 3;
             }
         }
+    }
 
     private void continueCraftPlacement(Minecraft client, CraftingMenu menu) {
         if (craftingPlacementPhase == 1) {
@@ -906,7 +892,6 @@ public class AutomationController {
     private boolean isTargetPickaxe(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return false;
         
-        // Валидация базового предмета: кастомные серверные кирки делаются на основе алмазной
         if (!stack.is(Items.DIAMOND_PICKAXE)) {
             return false;
         }
