@@ -330,20 +330,35 @@ public class AutomationController {
         status = "Waiting crafting table";
     }
 
-private void handleCraftingCycle(Minecraft client) {
+    private void handleCraftingCycle(Minecraft client) {
         if (!(client.player.containerMenu instanceof CraftingMenu menu)) {
             resetCraftingPlacement();
             setStage(Stage.OPEN_CRAFTING, "Crafting menu closed", 2);
             return;
         }
 
-        // ИСПРАВЛЕНИЕ: Если мы сейчас НЕ в фазе поштучной раскладки (craftingPlacementPhase == 0),
-        // но в курсоре мыши завис ЛЮБОЙ предмет (палки, изумруды) — ПРИНУДИТЕЛЬНО возвращаем его в инвентарь.
-        // Это предотвратит застревание палки в руке до того, как обновится слот результата.
         if (craftingPlacementPhase == 0 && !menu.getCarried().isEmpty()) {
+            ItemStack carried = menu.getCarried();
+            if (carried.is(Items.STICK) || carried.is(Items.EMERALD)) {
+                int missingSlot = findNextMissingRecipeSlot(menu);
+                if (missingSlot != -1 && expectedRecipeItemForSlot(missingSlot) == carried.getItem()) {
+                    craftingPlacementPhase = 2;
+                    craftingSourceSlot = findEmptyInventorySlot(menu);
+                    if (craftingSourceSlot == -1) craftingSourceSlot = 9;
+                    craftingTargetSlot = missingSlot;
+                    craftingExpectedItem = carried.getItem();
+                    continueCraftPlacement(client, menu);
+                    return;
+                }
+            }
             returnCarriedStackToInventory(client, menu);
             status = "Force clearing stuck item from cursor";
             cooldownTicks = 3;
+            return;
+        }
+
+        if (craftingPlacementPhase != 0) {
+            continueCraftPlacement(client, menu);
             return;
         }
 
@@ -781,6 +796,12 @@ private void handleCraftingCycle(Minecraft client) {
 
     private int countInventoryItem(Minecraft client, Item item) {
         int count = 0;
+        if (client.player.containerMenu != null) {
+            ItemStack carried = client.player.containerMenu.getCarried();
+            if (!carried.isEmpty() && carried.getItem() == item) {
+                count += carried.getCount();
+            }
+        }
         for (ItemStack stack : client.player.getInventory().items) {
             if (!stack.isEmpty() && stack.getItem() == item) {
                 count += stack.getCount();
@@ -791,6 +812,12 @@ private void handleCraftingCycle(Minecraft client) {
 
     private int countAnyLogs(Minecraft client) {
         int count = 0;
+        if (client.player.containerMenu != null) {
+            ItemStack carried = client.player.containerMenu.getCarried();
+            if (!carried.isEmpty() && carried.is(net.minecraft.tags.ItemTags.LOGS)) {
+                count += carried.getCount();
+            }
+        }
         for (ItemStack stack : client.player.getInventory().items) {
             if (!stack.isEmpty() && stack.is(net.minecraft.tags.ItemTags.LOGS)) {
                 count += stack.getCount();
@@ -809,6 +836,12 @@ private void handleCraftingCycle(Minecraft client) {
 
     private int countAnyPlanks(Minecraft client) {
         int count = 0;
+        if (client.player.containerMenu != null) {
+            ItemStack carried = client.player.containerMenu.getCarried();
+            if (!carried.isEmpty() && carried.is(net.minecraft.tags.ItemTags.PLANKS)) {
+                count += carried.getCount();
+            }
+        }
         for (ItemStack stack : client.player.getInventory().items) {
             if (!stack.isEmpty() && stack.is(net.minecraft.tags.ItemTags.PLANKS)) {
                 count += stack.getCount();
