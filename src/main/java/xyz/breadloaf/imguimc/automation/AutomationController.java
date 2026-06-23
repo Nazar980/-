@@ -31,7 +31,6 @@ public class AutomationController {
 
     private static final int AUCTION_PURCHASE_DELAY_TICKS = 200;
     
-    // Лимит одновременно выставленных предметов на AH (можно вынести в конфиг, по дефолту пусть будет 5)
     private int maxActiveSales = 5; 
     private int currentActiveSales = 0;
 
@@ -86,10 +85,10 @@ public class AutomationController {
             case EQUIP_PICKAXE -> equipEmeraldPickaxe(client);
             case SELL_PICKAXE -> sellEmeraldPickaxe(client);
             
-            // Новые стадии для очистки аукциона
-            case OPEN_AH_EXPIRED -> sendCommand(client, "ah", Stage.WAIT_AH_EXPIRED, "Opening AH for expired items", 15);
-            case WAIT_AH_EXPIRED -> waitForExpiredMenu(client);
+            case OPEN_AH_EXPIRED -> sendCommand(client, "ah", Stage.WAIT_AH_MAIN, "Opening AH main menu", 12);
+            case WAIT_AH_MAIN -> waitForAhMainMenu(client);
             case CLICK_ENDER_CHEST -> clickEnderChestSlot(client);
+            case WAIT_STORAGE_MENU -> waitForStorageMenu(client);
             case COLLECT_EXPIRED -> collectExpiredItems(client);
         }
     }
@@ -144,14 +143,13 @@ public class AutomationController {
     }
 
     private void evaluateNextStage(Minecraft client) {
-        // Проверка лимита: если выставили максимум кирок, идем чистить просроченные лоты
         if (currentActiveSales >= maxActiveSales) {
-            setStage(Stage.OPEN_AH_EXPIRED, "Sales limit reached. Clearing expired items", 5);
+            setStage(Stage.OPEN_AH_EXPIRED, "Sales limit reached. Clearing expired items", 3);
             return;
         }
 
         if (hasEmeraldPickaxe(client)) {
-            setStage(Stage.EQUIP_PICKAXE, "Preparing to sell emerald pickaxe", 2);
+            setStage(Stage.EQUIP_PICKAXE, "Preparing to sell emerald pickaxe", 1);
             return;
         }
 
@@ -165,7 +163,7 @@ public class AutomationController {
             return;
         }
 
-        setStage(Stage.OPEN_CRAFTING, "Ready to craft emerald pickaxe", 2);
+        setStage(Stage.OPEN_CRAFTING, "Ready to craft emerald pickaxe", 1);
     }
 
     private void sendCommand(Minecraft client, String command, Stage nextStage, String nextStatus, int delay) {
@@ -190,7 +188,7 @@ public class AutomationController {
         AuctionCandidate candidate = findBestAuctionCandidate(client, item, maxCostPerItem);
         if (candidate != null) {
             if (observedAuctionMenuTicks >= AUCTION_PURCHASE_DELAY_TICKS) {
-                setStage(successStage, waitingStatus + " found best listing", 2);
+                setStage(successStage, waitingStatus + " found best listing", 1);
                 return;
             }
 
@@ -210,25 +208,25 @@ public class AutomationController {
     private void buyBestAuctionItem(Minecraft client, net.minecraft.world.item.Item item, int maxCostPerItem, Stage successStage, Stage failStage, String successStatus, String failStatus) {
         AuctionCandidate candidate = findBestAuctionCandidate(client, item, maxCostPerItem);
         if (candidate == null) {
-            setStage(failStage, failStatus, 10);
+            setStage(failStage, failStatus, 5);
             return;
         }
 
         AbstractContainerMenu menu = client.player.containerMenu;
         client.gameMode.handleInventoryMouseClick(menu.containerId, candidate.slotId, 0, ClickType.QUICK_MOVE, client.player);
-        setStage(successStage, successStatus + " | per item: " + (long) candidate.pricePerItem, 12);
+        setStage(successStage, successStatus + " | per item: " + (long) candidate.pricePerItem, 6);
     }
 
     private void openCraftingTable(Minecraft client) {
         if (client.player.containerMenu instanceof CraftingMenu) {
-            setStage(Stage.CRAFT_PICKAXE, "Crafting table opened", 2);
+            setStage(Stage.CRAFT_PICKAXE, "Crafting table opened", 1);
             return;
         }
 
         if (client.player.containerMenu != client.player.inventoryMenu) {
             client.player.closeContainer();
             status = "Closing container before crafting";
-            cooldownTicks = 6;
+            cooldownTicks = 3;
             return;
         }
 
@@ -243,17 +241,17 @@ public class AutomationController {
         }
 
         client.gameMode.useItemOn(client.player, InteractionHand.MAIN_HAND, blockHitResult);
-        setStage(Stage.WAIT_CRAFTING, "Opening crafting table", 8);
+        setStage(Stage.WAIT_CRAFTING, "Opening crafting table", 4);
     }
 
     private void waitForCraftingMenu(Minecraft client) {
         if (client.player.containerMenu instanceof CraftingMenu) {
-            setStage(Stage.CRAFT_PICKAXE, "Crafting table ready", 2);
+            setStage(Stage.CRAFT_PICKAXE, "Crafting table ready", 1);
             return;
         }
 
         if (stageTicks > 30) {
-            setStage(Stage.OPEN_CRAFTING, "Retry crafting table", 8);
+            setStage(Stage.OPEN_CRAFTING, "Retry crafting table", 4);
             return;
         }
 
@@ -263,7 +261,7 @@ public class AutomationController {
     private void craftEmeraldPickaxe(Minecraft client) {
         if (!(client.player.containerMenu instanceof CraftingMenu menu)) {
             resetCraftingPlacement();
-            setStage(Stage.OPEN_CRAFTING, "Crafting menu closed", 4);
+            setStage(Stage.OPEN_CRAFTING, "Crafting menu closed", 2);
             return;
         }
 
@@ -275,7 +273,7 @@ public class AutomationController {
         if (!menu.getCarried().isEmpty()) {
             returnCarriedStackToInventory(client, menu);
             status = "Returning carried item";
-            cooldownTicks = 4;
+            cooldownTicks = 2;
             return;
         }
 
@@ -284,18 +282,18 @@ public class AutomationController {
             Item expectedItem = expectedRecipeItemForSlot(nextTargetSlot);
             int sourceSlot = findInventorySlot(menu, expectedItem);
             if (sourceSlot == -1) {
-                setStage(Stage.EVALUATE, "Missing ingredient for slot " + nextTargetSlot, 6);
+                setStage(Stage.EVALUATE, "Missing ingredient for slot " + nextTargetSlot, 2);
                 return;
             }
 
-            // ИЗМЕНЕНИЕ: Берём ВСЮ пачку сразу (ClickType.PICKUP, button 0), а не по одному предмету.
+            // Моментально берем пачку предметов в руку
             client.gameMode.handleInventoryMouseClick(menu.containerId, sourceSlot, 0, ClickType.PICKUP, client.player);
             craftingPlacementPhase = 1;
             craftingSourceSlot = sourceSlot;
             craftingTargetSlot = nextTargetSlot;
             craftingExpectedItem = expectedItem;
             status = "Picked up bulk ingredient for slot " + nextTargetSlot;
-            cooldownTicks = 3; // Уменьшили задержку для скорости
+            cooldownTicks = 1; // Ускорение: 1 тик задержки
             return;
         }
 
@@ -308,9 +306,9 @@ public class AutomationController {
         lastCraftedPickaxeName = normalizedItemName(result);
         resetCraftingPlacement();
         
-        // Забираем предмет через QUICK_MOVE (Shift+Клик). Если там скрафтилось несколько, заберет все доступные.
+        // Моментально забираем результат шифт-кликом
         client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
-        setStage(Stage.EQUIP_PICKAXE, "Craft result taken: " + lastCraftedPickaxeName, 6);
+        setStage(Stage.EQUIP_PICKAXE, "Craft result taken: " + lastCraftedPickaxeName, 2);
     }
 
     private void continueCraftPlacement(Minecraft client, CraftingMenu menu) {
@@ -319,55 +317,48 @@ public class AutomationController {
             if (carried.isEmpty() || carried.getItem() != craftingExpectedItem) {
                 resetCraftingPlacement();
                 status = "Failed to pick up crafting ingredient";
-                cooldownTicks = 4;
+                cooldownTicks = 2;
                 return;
             }
 
-            // ИЗМЕНЕНИЕ: Кликаем правой кнопкой (button 1), чтобы положить 1 предмет в целевой слот верстака
+            // Положили 1 единицу в целевой слот
             client.gameMode.handleInventoryMouseClick(menu.containerId, craftingTargetSlot, 1, ClickType.PICKUP, client.player);
             craftingPlacementPhase = 2;
             status = "Placing unit into slot " + craftingTargetSlot;
-            cooldownTicks = 3;
+            cooldownTicks = 1; // Минимальная задержка
             return;
         }
 
         if (craftingPlacementPhase == 2) {
-            // ИЗМЕНЕНИЕ: Не возвращаем остатки сразу в инвентарь! 
-            // Проверим, если в руке еще есть предметы, мы можем сразу пойти ставить в следующий слот верстака
+            // Ультра-скорость: если в руке еще есть блоки, проверяем следующий слот под этот же ресурс
             int nextTargetSlot = findNextMissingRecipeSlot(menu);
             if (nextTargetSlot != -1 && expectedRecipeItemForSlot(nextTargetSlot) == craftingExpectedItem) {
                 craftingTargetSlot = nextTargetSlot;
                 client.gameMode.handleInventoryMouseClick(menu.containerId, craftingTargetSlot, 1, ClickType.PICKUP, client.player);
                 status = "Placing next unit into slot " + craftingTargetSlot;
-                cooldownTicks = 3;
+                cooldownTicks = 1;
                 return;
             }
 
-            // Если предметов того же типа больше раскладывать не надо, возвращаем остаток на место источника
+            // Если распределение данного ресурса закончено, возвращаем пачку на исходное место
             if (!menu.getCarried().isEmpty()) {
                 client.gameMode.handleInventoryMouseClick(menu.containerId, craftingSourceSlot, 0, ClickType.PICKUP, client.player);
                 craftingPlacementPhase = 3;
                 status = "Returning remaining stack";
-                cooldownTicks = 3;
+                cooldownTicks = 1;
                 return;
             }
 
             resetCraftingPlacement();
             status = "Ingredient placement finished";
-            cooldownTicks = 3;
+            cooldownTicks = 1;
             return;
         }
 
         if (craftingPlacementPhase == 3) {
-            if (!menu.getCarried().isEmpty()) {
-                status = "Waiting carried stack return";
-                cooldownTicks = 3;
-                return;
-            }
-
             resetCraftingPlacement();
             status = "Ingredient placed";
-            cooldownTicks = 3;
+            cooldownTicks = 1;
         }
     }
 
@@ -418,32 +409,32 @@ public class AutomationController {
 
     private void equipEmeraldPickaxe(Minecraft client) {
         if (isTargetPickaxe(client.player.getMainHandItem())) {
-            setStage(Stage.SELL_PICKAXE, "Target pickaxe equipped", 2);
+            setStage(Stage.SELL_PICKAXE, "Target pickaxe equipped", 1);
             return;
         }
 
         AbstractContainerMenu menu = client.player.containerMenu;
         int pickaxeSlot = findTargetPickaxeSlot(menu);
         if (pickaxeSlot == -1) {
-            setStage(Stage.EVALUATE, "No crafted pickaxe to equip", 4);
+            setStage(Stage.EVALUATE, "No crafted pickaxe to equip", 2);
             return;
         }
 
         int selectedHotbarSlot = client.player.getInventory().selected;
         client.gameMode.handleInventoryMouseClick(menu.containerId, pickaxeSlot, selectedHotbarSlot, ClickType.SWAP, client.player);
-        setStage(Stage.SELL_PICKAXE, "Equipping target pickaxe", 6);
+        setStage(Stage.SELL_PICKAXE, "Equipping target pickaxe", 3);
     }
 
     private void sellEmeraldPickaxe(Minecraft client) {
         if (!isTargetPickaxe(client.player.getMainHandItem())) {
-            setStage(Stage.EQUIP_PICKAXE, "Target pickaxe is not in hand", 4);
+            setStage(Stage.EQUIP_PICKAXE, "Target pickaxe is not in hand", 2);
             return;
         }
 
         if (client.player.containerMenu != client.player.inventoryMenu) {
             client.player.closeContainer();
             status = "Closing container before selling";
-            cooldownTicks = 6;
+            cooldownTicks = 3;
             return;
         }
 
@@ -455,68 +446,81 @@ public class AutomationController {
         }
 
         client.player.connection.sendCommand("ah sell " + config.emeraldPickaxeCost);
-        currentActiveSales++; // Инкрементируем счетчик выставленных лотов
-        setStage(Stage.EVALUATE, "Selling emerald pickaxe for " + config.emeraldPickaxeCost, 20);
+        currentActiveSales++; 
+        setStage(Stage.EVALUATE, "Selling emerald pickaxe for " + config.emeraldPickaxeCost, 15);
     }
 
-    // ЛОГИКА ОЧИСТКИ АУКЦИОНА И ВОЗВРАТА ТОВАРОВ
-    private void waitForExpiredMenu(Minecraft client) {
+    // ИСПРАВЛЕННАЯ ЛОГИКА ВХОДА В ХРАНИЛИЩЕ АУКЦИОНА
+    private void waitForAhMainMenu(Minecraft client) {
         AbstractContainerMenu menu = client.player.containerMenu;
         int upperSlots = Math.max(0, menu.slots.size() - 36);
 
-        // Если открылось меню аукциона (обычно это сундук размером в 54 слота)
+        // Ждем, пока откроется Главное Меню аукциона (обычно 54 слота)
         if (menu != client.player.inventoryMenu && upperSlots > 45) {
-            setStage(Stage.CLICK_ENDER_CHEST, "AH Menu opened, preparing to click Ender Chest", 10);
+            setStage(Stage.CLICK_ENDER_CHEST, "AH Main Menu loaded, clicking Storage button", 4);
         } else if (stageTicks > 40) {
-            setStage(Stage.OPEN_AH_EXPIRED, "AH opening timeout, retrying...", 10);
+            setStage(Stage.OPEN_AH_EXPIRED, "AH timeout, retrying command", 10);
         }
     }
 
     private void clickEnderChestSlot(Minecraft client) {
         AbstractContainerMenu menu = client.player.containerMenu;
         if (menu == client.player.inventoryMenu) {
-            setStage(Stage.OPEN_AH_EXPIRED, "Menu accidentally closed, retrying", 5);
+            setStage(Stage.OPEN_AH_EXPIRED, "Menu closed unexpectedly, restarting", 5);
             return;
         }
 
-        // Кликаем по 46 слоту (в Java-индексации это слот 45, так как отсчет с 0)
+        // Кнопка входа в хранилище (46 слот = индекс 45)
         int enderChestSlotId = 45; 
+        
+        // Кликаем по ней ЛКМ, чтобы отправить пакет на открытие Хранилища
         client.gameMode.handleInventoryMouseClick(menu.containerId, enderChestSlotId, 0, ClickType.PICKUP, client.player);
-        setStage(Stage.COLLECT_EXPIRED, "Opened Expired Items / My Listings tab", 15);
+        
+        // Переключаемся на стадию ОЖИДАНИЯ нового интерфейса хранилища, а не сбор предметов!
+        setStage(Stage.WAIT_STORAGE_MENU, "Waiting for Storage menu to load", 6);
     }
 
-private void collectExpiredItems(Minecraft client) {
+    private void waitForStorageMenu(Minecraft client) {
         AbstractContainerMenu menu = client.player.containerMenu;
         if (menu == client.player.inventoryMenu) {
-            // Если меню закрылось или нас выбросило, возвращаемся в оценку ситуации
-            setStage(Stage.EVALUATE, "Menu closed, evaluating state", 5);
+            setStage(Stage.OPEN_AH_EXPIRED, "Storage closed, reopening", 5);
+            return;
+        }
+
+        // Даем серверу пару тиков обновить содержимое слотов под Хранилище. 
+        // Если стадия дождалась своего тика (cooldownTicks истек), переходим к сбору.
+        setStage(Stage.COLLECT_EXPIRED, "Storage menu ready, start collecting", 4);
+    }
+
+    private void collectExpiredItems(Minecraft client) {
+        AbstractContainerMenu menu = client.player.containerMenu;
+        if (menu == client.player.inventoryMenu) {
+            setStage(Stage.EVALUATE, "Menu closed during collection, evaluation state", 3);
             return;
         }
 
         int upperSlots = Math.max(0, menu.slots.size() - 36);
         boolean foundItem = false;
 
-        // Сканируем верхнюю часть меню (интерфейс возврата лотов)
+        // Теперь мы ГАРАНТИРОВАННО внутри хранилища, сканируем слоты на наличие возвращенных предметов
         for (int i = 0; i < upperSlots; i++) {
             ItemStack stack = menu.slots.get(i).getItem();
-            // ИСПРАВЛЕНО: Убрали несуществующий Items.EMERALD_PICKAXE. 
-            // Теперь метод relies исключительно на исправный isTargetPickaxe, который проверяет имя
             if (!stack.isEmpty() && isTargetPickaxe(stack)) {
-                // Забираем с помощью быстрого Shift-клика (QUICK_MOVE)
+                // Моментально забираем лот через шифт-клик
                 client.gameMode.handleInventoryMouseClick(menu.containerId, i, 0, ClickType.QUICK_MOVE, client.player);
                 
                 foundItem = true;
-                cooldownTicks = 8; // Задержка между кликами во избежание кика за флуд пакетами
+                cooldownTicks = 4; // Снизили задержку скупа лотов до 4 тиков для быстродействия
                 status = "Collecting expired item from slot " + i;
                 break;
             }
         }
 
-        // Если в меню больше не осталось наших предметов (кирок)
-        if (!foundItem && stageTicks > 20) {
+        // Если в хранилище больше нет подходящих кирок
+        if (!foundItem && stageTicks > 15) {
             client.player.closeContainer();
-            currentActiveSales = 0; // Сбрасываем счетчик, так как мы всё зачистили
-            setStage(Stage.EVALUATE, "All expired items collected, restarting cycle", 10);
+            currentActiveSales = 0; // Сбрасываем счетчик лимитов
+            setStage(Stage.EVALUATE, "All expired items collected, restarting cycle", 5);
         }
     }
 
@@ -742,10 +746,11 @@ private void collectExpiredItems(Minecraft client) {
         EQUIP_PICKAXE,
         SELL_PICKAXE,
         
-        // Новые стадии
+        // Переработанные стадии аукциона
         OPEN_AH_EXPIRED,
-        WAIT_AH_EXPIRED,
+        WAIT_AH_MAIN,
         CLICK_ENDER_CHEST,
+        WAIT_STORAGE_MENU,
         COLLECT_EXPIRED
     }
 
