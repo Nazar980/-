@@ -30,6 +30,10 @@ public class AutomationController {
     private final ImguimcConfig config = ImguimcConfig.get();
 
     private static final int AUCTION_PURCHASE_DELAY_TICKS = 200;
+    
+    // Лимит одновременно выставленных предметов на AH (можно вынести в конфиг, по дефолту пусть будет 5)
+    private int maxActiveSales = 5; 
+    private int currentActiveSales = 0;
 
     private boolean enabled = false;
     private boolean waitingForBind = false;
@@ -40,6 +44,8 @@ public class AutomationController {
     private String lastCraftedPickaxeName = "";
     private int observedAuctionContainerId = -1;
     private int observedAuctionMenuTicks = 0;
+    
+    // Переменные быстрого крафта
     private int craftingPlacementPhase = 0;
     private int craftingSourceSlot = -1;
     private int craftingTargetSlot = -1;
@@ -50,18 +56,14 @@ public class AutomationController {
     }
 
     public void tick(Minecraft client) {
-        if (client == null) {
-            return;
-        }
+        if (client == null) return;
 
         if (cooldownTicks > 0) {
             cooldownTicks--;
             return;
         }
 
-        if (!enabled) {
-            return;
-        }
+        if (!enabled) return;
 
         if (client.player == null || client.gameMode == null || client.level == null) {
             setStage(Stage.IDLE, "Waiting for world", 10);
@@ -83,13 +85,17 @@ public class AutomationController {
             case CRAFT_PICKAXE -> craftEmeraldPickaxe(client);
             case EQUIP_PICKAXE -> equipEmeraldPickaxe(client);
             case SELL_PICKAXE -> sellEmeraldPickaxe(client);
+            
+            // Новые стадии для очистки аукциона
+            case OPEN_AH_EXPIRED -> sendCommand(client, "ah", Stage.WAIT_AH_EXPIRED, "Opening AH for expired items", 15);
+            case WAIT_AH_EXPIRED -> waitForExpiredMenu(client);
+            case CLICK_ENDER_CHEST -> clickEnderChestSlot(client);
+            case COLLECT_EXPIRED -> collectExpiredItems(client);
         }
     }
 
     public boolean handleKeyPress(int key, int action) {
-        if (action != GLFW.GLFW_PRESS) {
-            return false;
-        }
+        if (action != GLFW.GLFW_PRESS) return false;
 
         if (waitingForBind) {
             config.toggleAutomationKey = key;
@@ -138,6 +144,12 @@ public class AutomationController {
     }
 
     private void evaluateNextStage(Minecraft client) {
+        // Проверка лимита: если выставили максимум кирок, идем чистить просроченные лоты
+        if (currentActiveSales >= maxActiveSales) {
+            setStage(Stage.OPEN_AH_EXPIRED, "Sales limit reached. Clearing expired items", 5);
+            return;
+        }
+
         if (hasEmeraldPickaxe(client)) {
             setStage(Stage.EQUIP_PICKAXE, "Preparing to sell emerald pickaxe", 2);
             return;
@@ -276,13 +288,14 @@ public class AutomationController {
                 return;
             }
 
+            // ИЗМЕНЕНИЕ: Берём ВСЮ пачку сразу (ClickType.PICKUP, button 0), а не по одному предмету.
             client.gameMode.handleInventoryMouseClick(menu.containerId, sourceSlot, 0, ClickType.PICKUP, client.player);
             craftingPlacementPhase = 1;
             craftingSourceSlot = sourceSlot;
             craftingTargetSlot = nextTargetSlot;
             craftingExpectedItem = expectedItem;
-            status = "Picked ingredient for slot " + nextTargetSlot;
-            cooldownTicks = 4;
+            status = "Picked up bulk ingredient for slot " + nextTargetSlot;
+            cooldownTicks = 3; // Уменьшили задержку для скорости
             return;
         }
 
@@ -294,8 +307,10 @@ public class AutomationController {
 
         lastCraftedPickaxeName = normalizedItemName(result);
         resetCraftingPlacement();
+        
+        // Забираем предмет через QUICK_MOVE (Shift+Клик). Если там скрафтилось несколько, заберет все доступные.
         client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
-        setStage(Stage.EQUIP_PICKAXE, "Craft result taken: " + lastCraftedPickaxeName, 8);
+        setStage(Stage.EQUIP_PICKAXE, "Craft result taken: " + lastCraftedPickaxeName, 6);
     }
 
     private void continueCraftPlacement(Minecraft client, CraftingMenu menu) {
@@ -308,45 +323,51 @@ public class AutomationController {
                 return;
             }
 
+            // ИЗМЕНЕНИЕ: Кликаем правой кнопкой (button 1), чтобы положить 1 предмет в целевой слот верстака
             client.gameMode.handleInventoryMouseClick(menu.containerId, craftingTargetSlot, 1, ClickType.PICKUP, client.player);
             craftingPlacementPhase = 2;
-            status = "Placing ingredient into slot " + craftingTargetSlot;
-            cooldownTicks = 4;
+            status = "Placing unit into slot " + craftingTargetSlot;
+            cooldownTicks = 3;
             return;
         }
 
         if (craftingPlacementPhase == 2) {
-            ItemStack targetStack = menu.slots.get(craftingTargetSlot).getItem();
-            if (targetStack.isEmpty() || targetStack.getItem() != craftingExpectedItem) {
-                status = "Waiting slot sync for " + craftingTargetSlot;
-                cooldownTicks = 4;
+            // ИЗМЕНЕНИЕ: Не возвращаем остатки сразу в инвентарь! 
+            // Проверим, если в руке еще есть предметы, мы можем сразу пойти ставить в следующий слот верстака
+            int nextTargetSlot = findNextMissingRecipeSlot(menu);
+            if (nextTargetSlot != -1 && expectedRecipeItemForSlot(nextTargetSlot) == craftingExpectedItem) {
+                craftingTargetSlot = nextTargetSlot;
+                client.gameMode.handleInventoryMouseClick(menu.containerId, craftingTargetSlot, 1, ClickType.PICKUP, client.player);
+                status = "Placing next unit into slot " + craftingTargetSlot;
+                cooldownTicks = 3;
                 return;
             }
 
+            // Если предметов того же типа больше раскладывать не надо, возвращаем остаток на место источника
             if (!menu.getCarried().isEmpty()) {
                 client.gameMode.handleInventoryMouseClick(menu.containerId, craftingSourceSlot, 0, ClickType.PICKUP, client.player);
                 craftingPlacementPhase = 3;
                 status = "Returning remaining stack";
-                cooldownTicks = 4;
+                cooldownTicks = 3;
                 return;
             }
 
             resetCraftingPlacement();
-            status = "Ingredient placed";
-            cooldownTicks = 4;
+            status = "Ingredient placement finished";
+            cooldownTicks = 3;
             return;
         }
 
         if (craftingPlacementPhase == 3) {
             if (!menu.getCarried().isEmpty()) {
                 status = "Waiting carried stack return";
-                cooldownTicks = 4;
+                cooldownTicks = 3;
                 return;
             }
 
             resetCraftingPlacement();
             status = "Ingredient placed";
-            cooldownTicks = 4;
+            cooldownTicks = 3;
         }
     }
 
@@ -434,45 +455,97 @@ public class AutomationController {
         }
 
         client.player.connection.sendCommand("ah sell " + config.emeraldPickaxeCost);
+        currentActiveSales++; // Инкрементируем счетчик выставленных лотов
         setStage(Stage.EVALUATE, "Selling emerald pickaxe for " + config.emeraldPickaxeCost, 20);
     }
 
-    private AuctionCandidate findBestAuctionCandidate(Minecraft client, net.minecraft.world.item.Item item, int maxCostPerItem) {
-        if (client.player == null || client.screen == null) {
-            return null;
+    // ЛОГИКА ОЧИСТКИ АУКЦИОНА И ВОЗВРАТА ТОВАРОВ
+    private void waitForExpiredMenu(Minecraft client) {
+        AbstractContainerMenu menu = client.player.containerMenu;
+        int upperSlots = Math.max(0, menu.slots.size() - 36);
+
+        // Если открылось меню аукциона (обычно это сундук размером в 54 слота)
+        if (menu != client.player.inventoryMenu && upperSlots > 45) {
+            setStage(Stage.CLICK_ENDER_CHEST, "AH Menu opened, preparing to click Ender Chest", 10);
+        } else if (stageTicks > 40) {
+            setStage(Stage.OPEN_AH_EXPIRED, "AH opening timeout, retrying...", 10);
         }
+    }
+
+    private void clickEnderChestSlot(Minecraft client) {
+        AbstractContainerMenu menu = client.player.containerMenu;
+        if (menu == client.player.inventoryMenu) {
+            setStage(Stage.OPEN_AH_EXPIRED, "Menu accidentally closed, retrying", 5);
+            return;
+        }
+
+        // Кликаем по 46 слоту (в Java-индексации это слот 45, так как отсчет с 0)
+        int enderChestSlotId = 45; 
+        client.gameMode.handleInventoryMouseClick(menu.containerId, enderChestSlotId, 0, ClickType.PICKUP, client.player);
+        setStage(Stage.COLLECT_EXPIRED, "Opened Expired Items / My Listings tab", 15);
+    }
+
+    private void collectExpiredItems(Minecraft client) {
+        AbstractContainerMenu menu = client.player.containerMenu;
+        if (menu == client.player.inventoryMenu) {
+            // Если меню закрылось или нас выбросило, возвращаемся в оценку ситуации
+            setStage(Stage.EVALUATE, "Menu closed, evaluating state", 5);
+            return;
+        }
+
+        int upperSlots = Math.max(0, menu.slots.size() - 36);
+        boolean foundItem = false;
+
+        // Сканируем верхнюю часть меню (интерфейс возврата лотов)
+        for (int i = 0; i < upperSlots; i++) {
+            ItemStack stack = menu.slots.get(i).getItem();
+            // Проверяем, лежит ли в слоте кирка или возвращаемый предмет (исключая декоративные панели/стекла меню)
+            if (!stack.isEmpty() && (stack.getItem() == Items.EMERALD_PICKAXE || isTargetPickaxe(stack))) {
+                // Забираем с помощью комбинации ЛКМ + ПКМ как просил, или быстрым Shift-кликом (QUICK_MOVE)
+                // На многих серверах Shift-клик (QUICK_MOVE) забирает лот моментально. 
+                // Сделаем QUICK_MOVE, если плагин требует именно ЛКМ+ПКМ — перепишем на последовательность кликов.
+                client.gameMode.handleInventoryMouseClick(menu.containerId, i, 0, ClickType.QUICK_MOVE, client.player);
+                
+                foundItem = true;
+                cooldownTicks = 8; // Небольшая задержка между кликами во избежание кика за флуд пакетами
+                status = "Collecting expired item from slot " + i;
+                break;
+            }
+        }
+
+        // Если в меню больше не осталось наших предметов (кирок)
+        if (!foundItem && stageTicks > 20) {
+            client.player.closeContainer();
+            currentActiveSales = 0; // Сбрасываем счетчик, так как мы всё зачистили
+            setStage(Stage.EVALUATE, "All expired items collected, restarting cycle", 10);
+        }
+    }
+
+    private AuctionCandidate findBestAuctionCandidate(Minecraft client, net.minecraft.world.item.Item item, int maxCostPerItem) {
+        if (client.player == null || client.screen == null) return null;
 
         AbstractContainerMenu menu = client.player.containerMenu;
         int upperSlots = Math.max(0, menu.slots.size() - 36);
-        if (menu == client.player.inventoryMenu || upperSlots <= 10) {
-            return null;
-        }
+        if (menu == client.player.inventoryMenu || upperSlots <= 10) return null;
 
         int scanLimit = Math.min(upperSlots, Math.max(1, config.howManySlots));
-
         AuctionCandidate best = null;
+
         for (int slotId = 0; slotId < scanLimit; slotId++) {
             Slot slot = menu.slots.get(slotId);
             ItemStack stack = slot.getItem();
-            if (stack.isEmpty() || stack.getItem() != item) {
-                continue;
-            }
+            if (stack.isEmpty() || stack.getItem() != item) continue;
 
             long totalPrice = extractPriceFromLore(stack);
-            if (totalPrice <= 0) {
-                continue;
-            }
+            if (totalPrice <= 0) continue;
 
             double pricePerItem = totalPrice / (double) Math.max(1, stack.getCount());
-            if (maxCostPerItem > 0 && pricePerItem > maxCostPerItem) {
-                continue;
-            }
+            if (maxCostPerItem > 0 && pricePerItem > maxCostPerItem) continue;
 
             if (best == null || pricePerItem < best.pricePerItem || (pricePerItem == best.pricePerItem && stack.getCount() > best.stackCount)) {
                 best = new AuctionCandidate(slotId, totalPrice, pricePerItem, stack.getCount());
             }
         }
-
         return best;
     }
 
@@ -483,19 +556,13 @@ public class AutomationController {
 
         for (String originalLine : lines) {
             String line = originalLine.toLowerCase(Locale.ROOT);
-            if (isTimeLine(line)) {
-                continue;
-            }
+            if (isTimeLine(line)) continue;
 
             List<Long> numbers = extractNumbers(line);
-            if (numbers.isEmpty()) {
-                continue;
-            }
+            if (numbers.isEmpty()) continue;
 
             long candidate = numbers.stream().mapToLong(Long::longValue).max().orElse(-1);
-            if (candidate <= 0) {
-                continue;
-            }
+            if (candidate <= 0) continue;
 
             if (containsPriceKeyword(line)) {
                 keywordPrice = Math.max(keywordPrice, candidate);
@@ -503,12 +570,7 @@ public class AutomationController {
                 fallbackPrice = Math.max(fallbackPrice, candidate);
             }
         }
-
-        if (keywordPrice > 0) {
-            return keywordPrice;
-        }
-
-        return fallbackPrice;
+        return keywordPrice > 0 ? keywordPrice : fallbackPrice;
     }
 
     private List<String> collectRelevantLines(ItemStack stack) {
@@ -530,44 +592,26 @@ public class AutomationController {
             String value = matcher.group(1).replace(",", "");
             try {
                 values.add(Long.parseLong(value));
-            } catch (NumberFormatException ignored) {
-            }
+            } catch (NumberFormatException ignored) {}
         }
         return values;
     }
 
     private boolean isTimeLine(String line) {
-        return line.contains("остал")
-                || line.contains("пропад")
-                || line.contains("expire")
-                || line.contains("remaining")
-                || line.contains("сек")
-                || line.contains("мин")
-                || line.contains("час")
-                || line.contains("дн")
-                || line.contains("day")
-                || line.contains("hour")
-                || line.contains("minute")
-                || line.contains("second");
+        return line.contains("остал") || line.contains("пропад") || line.contains("expire")
+                || line.contains("remaining") || line.contains("сек") || line.contains("мин")
+                || line.contains("час") || line.contains("дн") || line.contains("day")
+                || line.contains("hour") || line.contains("minute") || line.contains("second");
     }
 
     private boolean containsPriceKeyword(String line) {
-        return line.contains("цен")
-                || line.contains("стоим")
-                || line.contains("монет")
-                || line.contains("coins")
-                || line.contains("price")
-                || line.contains("cost")
-                || line.contains("$");
+        return line.contains("цен") || line.contains("стоим") || line.contains("монет")
+                || line.contains("coins") || line.contains("price") || line.contains("cost") || line.contains("$");
     }
 
     private boolean containsCountKeyword(String line) {
-        return line.contains("шт")
-                || line.contains("stack")
-                || line.contains("count")
-                || line.contains("колич")
-                || line.contains("amount")
-                || line.contains("x");
+        return line.contains("шт") || line.contains("stack") || line.contains("count")
+                || line.contains("колич") || line.contains("amount") || line.contains("x");
     }
 
     private int countInventoryItem(Minecraft client, net.minecraft.world.item.Item item) {
@@ -581,14 +625,9 @@ public class AutomationController {
     }
 
     private boolean hasEmeraldPickaxe(Minecraft client) {
-        if (isTargetPickaxe(client.player.getMainHandItem())) {
-            return true;
-        }
-
+        if (isTargetPickaxe(client.player.getMainHandItem())) return true;
         for (ItemStack stack : client.player.getInventory().items) {
-            if (isTargetPickaxe(stack)) {
-                return true;
-            }
+            if (isTargetPickaxe(stack)) return true;
         }
         return false;
     }
@@ -597,27 +636,18 @@ public class AutomationController {
         int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
         for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
             ItemStack stack = menu.slots.get(slotId).getItem();
-            if (isTargetPickaxe(stack)) {
-                return slotId;
-            }
+            if (isTargetPickaxe(stack)) return slotId;
         }
         return -1;
     }
 
     private boolean isTargetPickaxe(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) {
-            return false;
-        }
-
+        if (stack == null || stack.isEmpty()) return false;
         String normalizedName = normalizedItemName(stack);
-        if (!lastCraftedPickaxeName.isEmpty() && normalizedName.equals(lastCraftedPickaxeName)) {
-            return true;
-        }
+        if (!lastCraftedPickaxeName.isEmpty() && normalizedName.equals(lastCraftedPickaxeName)) return true;
 
         String descriptionId = stack.getItem().getDescriptionId().toLowerCase(Locale.ROOT);
-        return descriptionId.contains("pickaxe")
-                || normalizedName.contains("кирка")
-                || normalizedName.contains("pickaxe");
+        return descriptionId.contains("pickaxe") || normalizedName.contains("кирка") || normalizedName.contains("pickaxe");
     }
 
     private String normalizedItemName(ItemStack stack) {
@@ -628,9 +658,7 @@ public class AutomationController {
         int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
         for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
             ItemStack stack = menu.slots.get(slotId).getItem();
-            if (!stack.isEmpty() && stack.getItem() == item) {
-                return slotId;
-            }
+            if (!stack.isEmpty() && stack.getItem() == item) return slotId;
         }
         return -1;
     }
@@ -639,9 +667,7 @@ public class AutomationController {
         int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
         for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
             ItemStack stack = menu.slots.get(slotId).getItem();
-            if (!stack.isEmpty() && stack.getItem() == item) {
-                return slotId;
-            }
+            if (!stack.isEmpty() && stack.getItem() == item) return slotId;
         }
         return -1;
     }
@@ -649,9 +675,7 @@ public class AutomationController {
     private int findEmptyInventorySlot(AbstractContainerMenu menu) {
         int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
         for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
-            if (menu.slots.get(slotId).getItem().isEmpty()) {
-                return slotId;
-            }
+            if (menu.slots.get(slotId).getItem().isEmpty()) return slotId;
         }
         return -1;
     }
@@ -717,7 +741,13 @@ public class AutomationController {
         WAIT_CRAFTING,
         CRAFT_PICKAXE,
         EQUIP_PICKAXE,
-        SELL_PICKAXE
+        SELL_PICKAXE,
+        
+        // Новые стадии
+        OPEN_AH_EXPIRED,
+        WAIT_AH_EXPIRED,
+        CLICK_ENDER_CHEST,
+        COLLECT_EXPIRED
     }
 
     private record AuctionCandidate(int slotId, long totalPrice, double pricePerItem, int stackCount) {
