@@ -315,8 +315,7 @@ public class AutomationController {
         }
         status = "Waiting crafting table";
     }
-
-    // ИНТЕЛЛЕКТУАЛЬНЫЙ СУПЕР-БЫСТРЫЙ ЦИКЛ ПЕРЕРАБОТКИ
+// ИСПРАВЛЕННЫЙ АДАПТИВНЫЙ ЦИКЛ ПЕРЕРАБОТКИ ДЕРЕВА И КРАФТА
     private void handleCraftingCycle(Minecraft client) {
         if (!(client.player.containerMenu instanceof CraftingMenu menu)) {
             resetCraftingPlacement();
@@ -336,27 +335,27 @@ public class AutomationController {
             return;
         }
 
-        // ШАГ 1: Если в инвентаре есть брёвна — сначала перерабатываем их в ДОСКИ
+        int sticks = countInventoryItem(client, Items.STICK);
+
+        // ШАГ 1: Если палок мало и в инвентаре есть брёвна — перерабатываем их в доски
         int logSlot = findAnyLogSlot(menu);
-        if (logSlot != -1 && countInventoryItem(client, Items.STICK) < 2) {
-            // Кладем 1 бревно в 1-й слот верстака
+        if (logSlot != -1 && sticks < 2) {
+            // Кликаем по бревну, чтобы взять его в руку
             client.gameMode.handleInventoryMouseClick(menu.containerId, logSlot, 0, ClickType.PICKUP, client.player);
-            craftingPlacementPhase = 1;
-            craftingSourceSlot = logSlot;
-            craftingTargetSlot = 1; // Левый верхний слот крафта
-            craftingExpectedItem = menu.slots.get(logSlot).getItem().getItem();
-            status = "Processing log to planks";
-            cooldownTicks = 1;
+            // Кладем его в первый слот сетки крафта верстака (слот 1)
+            client.gameMode.handleInventoryMouseClick(menu.containerId, 1, 0, ClickType.PICKUP, client.player);
+            status = "Placing log for planks";
+            cooldownTicks = 3; // Даем время серверу обновить результат крафта
             return;
         }
 
-        // ШАГ 2: Если брёвен нет, но есть доски, а палок всё ещё мало — делаем ПАЛКИ
+        // ШАГ 2: Если брёвен в инвентаре нет, но есть доски, а палок всё ещё мало — делаем палки
         int plankSlot = findAnyPlankSlot(menu);
-        if (plankSlot != -1 && countInventoryItem(client, Items.STICK) < 2) {
-            // Для палок нужны 2 доски: в слот 1 и в слот 4 (друг под другом)
+        if (plankSlot != -1 && sticks < 2) {
             boolean slot1Ok = menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
             boolean slot4Ok = menu.slots.get(4).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
             
+            // Если доски еще не разложены в 1 и 4 слоты друг под другом
             if (!slot1Ok || !slot4Ok) {
                 client.gameMode.handleInventoryMouseClick(menu.containerId, plankSlot, 0, ClickType.PICKUP, client.player);
                 craftingPlacementPhase = 1;
@@ -364,12 +363,12 @@ public class AutomationController {
                 craftingTargetSlot = !slot1Ok ? 1 : 4;
                 craftingExpectedItem = menu.slots.get(plankSlot).getItem().getItem();
                 status = "Placing planks for sticks";
-                cooldownTicks = 1;
+                cooldownTicks = 2;
                 return;
             }
         }
 
-        // ШАГ 3: Если палки и изумруды на месте — крафтим КИРКУ
+        // ШАГ 3: Если палки и изумруды на месте — крафтим кирку
         int nextTargetSlot = findNextMissingRecipeSlot(menu);
         if (nextTargetSlot != -1) {
             Item expectedItem = expectedRecipeItemForSlot(nextTargetSlot);
@@ -385,7 +384,7 @@ public class AutomationController {
             craftingTargetSlot = nextTargetSlot;
             craftingExpectedItem = expectedItem;
             status = "Placing pickaxe component into slot " + nextTargetSlot;
-            cooldownTicks = 1;
+            cooldownTicks = 2;
             return;
         }
 
@@ -402,11 +401,11 @@ public class AutomationController {
             client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
             setStage(Stage.EQUIP_PICKAXE, "Crafted: " + lastCraftedPickaxeName, 2);
         } else {
-            // Если результатом крафта были доски или палки — моментально забираем их шифт-кликом
+            // Если скрафтились доски или палки — моментально забираем их шифт-кликом
             resetCraftingPlacement();
             client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
-            status = "Collected processed sub-resource";
-            cooldownTicks = 1;
+            status = "Collected processed resource";
+            cooldownTicks = 3;
         }
     }
 
