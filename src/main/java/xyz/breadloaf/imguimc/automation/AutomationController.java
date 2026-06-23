@@ -330,26 +330,20 @@ public class AutomationController {
         status = "Waiting crafting table";
     }
 
-    private void handleCraftingCycle(Minecraft client) {
+private void handleCraftingCycle(Minecraft client) {
         if (!(client.player.containerMenu instanceof CraftingMenu menu)) {
             resetCraftingPlacement();
             setStage(Stage.OPEN_CRAFTING, "Crafting menu closed", 2);
             return;
         }
 
-        if (!menu.getCarried().isEmpty() && craftingPlacementPhase == 0) {
-            boolean slot1Ok = menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
-            boolean slot4Ok = menu.slots.get(4).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
-            if (!(menu.getCarried().is(net.minecraft.tags.ItemTags.PLANKS) && (!slot1Ok || !slot4Ok))) {
-                returnCarriedStackToInventory(client, menu);
-                status = "Cleaning cursor item";
-                cooldownTicks = 3;
-                return;
-            }
-        }
-
-        if (craftingPlacementPhase != 0) {
-            continueCraftPlacement(client, menu);
+        // ИСПРАВЛЕНИЕ: Если мы сейчас НЕ в фазе поштучной раскладки (craftingPlacementPhase == 0),
+        // но в курсоре мыши завис ЛЮБОЙ предмет (палки, изумруды) — ПРИНУДИТЕЛЬНО возвращаем его в инвентарь.
+        // Это предотвратит застревание палки в руке до того, как обновится слот результата.
+        if (craftingPlacementPhase == 0 && !menu.getCarried().isEmpty()) {
+            returnCarriedStackToInventory(client, menu);
+            status = "Force clearing stuck item from cursor";
+            cooldownTicks = 3;
             return;
         }
 
@@ -361,11 +355,6 @@ public class AutomationController {
                 client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
                 status = "Collecting remaining items from result slot";
                 cooldownTicks = 3;
-                return;
-            }
-            if (!menu.getCarried().isEmpty()) {
-                returnCarriedStackToInventory(client, menu);
-                cooldownTicks = 2;
                 return;
             }
             client.gameMode.handleInventoryMouseClick(menu.containerId, logSlot, 0, ClickType.QUICK_MOVE, client.player);
@@ -428,12 +417,6 @@ public class AutomationController {
                 return;
             }
 
-            if (!menu.getCarried().isEmpty()) {
-                returnCarriedStackToInventory(client, menu);
-                cooldownTicks = 2;
-                return;
-            }
-
             Item expectedItem = expectedRecipeItemForSlot(nextTargetSlot);
             int sourceSlot = findInventorySlot(menu, expectedItem);
             if (sourceSlot == -1) {
@@ -454,23 +437,11 @@ public class AutomationController {
         ItemStack result = menu.slots.get(0).getItem();
         if (!result.isEmpty()) {
             if (isTargetPickaxe(result)) {
-                if (!menu.getCarried().isEmpty()) {
-                    returnCarriedStackToInventory(client, menu);
-                    status = "Clearing cursor before collecting target pickaxe";
-                    cooldownTicks = 3;
-                    return;
-                }
-
                 lastCraftedPickaxeName = normalizedItemName(result);
                 resetCraftingPlacement();
                 client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
                 setStage(Stage.EQUIP_PICKAXE, "Crafted and collected: " + lastCraftedPickaxeName, 5);
             } else {
-                if (!menu.getCarried().isEmpty()) {
-                    returnCarriedStackToInventory(client, menu);
-                    cooldownTicks = 2;
-                    return;
-                }
                 resetCraftingPlacement();
                 client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
                 status = "Collected sub-resource from result slot";
