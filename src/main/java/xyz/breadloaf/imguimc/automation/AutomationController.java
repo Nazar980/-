@@ -44,7 +44,7 @@ public class AutomationController {
     private int observedAuctionContainerId = -1;
     private int observedAuctionMenuTicks = 0;
     
-    // Переменные быстрого крафта
+    // Переменные пошагового крафта кирки
     private int craftingPlacementPhase = 0;
     private int craftingSourceSlot = -1;
     private int craftingTargetSlot = -1;
@@ -309,14 +309,25 @@ public class AutomationController {
         status = "Waiting crafting table";
     }
 
-private void handleCraftingCycle(Minecraft client) {
+    private void handleCraftingCycle(Minecraft client) {
         if (!(client.player.containerMenu instanceof CraftingMenu menu)) {
             resetCraftingPlacement();
             setStage(Stage.OPEN_CRAFTING, "Crafting menu closed", 2);
             return;
         }
 
-        // Если мы в процессе поштучной раскладки КИРКИ — продолжаем её
+        if (!menu.getCarried().isEmpty() && craftingPlacementPhase == 0) {
+            // Очищаем руку, если там что-то зависло вне фазы раскладки кирки
+            boolean slot1Ok = menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
+            boolean slot4Ok = menu.slots.get(4).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
+            if (!(menu.getCarried().is(net.minecraft.tags.ItemTags.PLANKS) && (!slot1Ok || !slot4Ok))) {
+                returnCarriedStackToInventory(client, menu);
+                status = "Cleaning cursor item";
+                cooldownTicks = 3;
+                return;
+            }
+        }
+
         if (craftingPlacementPhase != 0) {
             continueCraftPlacement(client, menu);
             return;
@@ -344,46 +355,45 @@ private void handleCraftingCycle(Minecraft client) {
             return;
         }
 
-// ШАГ 2: МАССОВЫЙ КРАФТ ПАЛОК (Поочередная выгрузка двух разных стаков через ЛКМ)
+        // ШАГ 2: МАССОВЫЙ КРАФТ ПАЛОК ИЗ ДОСОК (Исправленный поочередный ЛКМ)
         int plankSlot = findAnyPlankSlot(menu);
-        if (plankSlot != -1 && sticks < 2) {
-            ItemStack slot1Item = menu.slots.get(1).getItem();
-            ItemStack slot4Item = menu.slots.get(4).getItem();
-            
-            boolean slot1Ok = slot1Item.is(net.minecraft.tags.ItemTags.PLANKS);
-            boolean slot4Ok = slot4Item.is(net.minecraft.tags.ItemTags.PLANKS);
-            
+        boolean slot1Ok = menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
+        boolean slot4Ok = menu.slots.get(4).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
+
+        if ((plankSlot != -1 || !menu.getCarried().isEmpty()) && sticks < 2) {
             if (!slot1Ok || !slot4Ok) {
                 ItemStack carried = menu.getCarried();
                 
-                // Если в руке ничего нет — берем стак досок из инвентаря ЛКМ (button = 0)
+                // 1. Если рука пустая — берём стак досок ИЗ ИНВЕНТАРЯ ЛКМ
                 if (carried.isEmpty() || !carried.is(net.minecraft.tags.ItemTags.PLANKS)) {
-                    client.gameMode.handleInventoryMouseClick(menu.containerId, plankSlot, 0, ClickType.PICKUP, client.player);
-                    status = "Picking up planks stack with LMB";
-                    cooldownTicks = 2;
-                    return;
+                    if (plankSlot != -1) {
+                        client.gameMode.handleInventoryMouseClick(menu.containerId, plankSlot, 0, ClickType.PICKUP, client.player);
+                        status = "Picking up planks stack from inventory";
+                        cooldownTicks = 2;
+                        return;
+                    }
                 }
                 
-                // Если стак в руке и слот 1 еще пустой — отдаем весь стак туда через ЛКМ (button = 0)
+                // 2. Если доски в руке и слот 1 ПУСТОЙ — кладём весь стак в слот 1 через ЛКМ
                 if (!slot1Ok) {
                     client.gameMode.handleInventoryMouseClick(menu.containerId, 1, 0, ClickType.PICKUP, client.player);
-                    status = "Placing entire first stack into slot 1 via LMB";
+                    status = "Placing entire stack into slot 1";
                     cooldownTicks = 2;
                     return;
                 }
                 
-                // Если слот 1 уже заполнен, а слот 4 пустой — отдаем весь удерживаемый (второй) стак туда через ЛКМ (button = 0)
+                // 3. Если доски в руке, слот 1 ЗАПОЛНЕН, а слот 4 ПУСТОЙ — кладём весь второй стак в слот 4 через ЛКМ
                 if (!slot4Ok) {
                     client.gameMode.handleInventoryMouseClick(menu.containerId, 4, 0, ClickType.PICKUP, client.player);
-                    status = "Placing entire second stack into slot 4 via LMB";
+                    status = "Placing second stack into slot 4";
                     cooldownTicks = 2;
                     return;
                 }
             }
         }
 
-        // Если палок всё ещё мало, но доски уже разложены в сетке — курсор должен быть пустой, чтобы забрать результат
-        if (sticks < 2 && !menu.getCarried().isEmpty()) {
+        // Если доски разложены, но в руке почему-то остались излишки — возвращаем их
+        if (sticks < 2 && !menu.getCarried().isEmpty() && slot1Ok && slot4Ok) {
             returnCarriedStackToInventory(client, menu);
             status = "Clearing cursor before collecting sticks";
             cooldownTicks = 3;
@@ -393,7 +403,7 @@ private void handleCraftingCycle(Minecraft client) {
         // ШАГ 3: СБОРКА КИРКИ (Строго когда палок уже хватает!)
         int nextTargetSlot = findNextMissingRecipeSlot(menu);
         if (nextTargetSlot != -1 && sticks >= 2) {
-            // Очищаем сетку от возможных остатков досок в слотах 1 и 4 перед выкладыванием кирки
+            // Очищаем сетку от остатков досок в слотах 1 и 4 перед выкладыванием изумрудов
             if (menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS) || menu.slots.get(4).getItem().is(net.minecraft.tags.ItemTags.PLANKS)) {
                 ItemStack res = menu.slots.get(0).getItem();
                 if (!res.isEmpty() && !isTargetPickaxe(res)) {
@@ -639,7 +649,7 @@ private void handleCraftingCycle(Minecraft client) {
                 client.gameMode.handleInventoryMouseClick(menu.containerId, i, 0, ClickType.QUICK_MOVE, client.player);
                 foundItem = true;
                 cooldownTicks = 4;
-                status = "Collecting expired item from slot " + i;
+                status = "Collection expired item from slot " + i;
                 break;
             }
         }
@@ -822,7 +832,7 @@ private void handleCraftingCycle(Minecraft client) {
     }
 
     private int findAnyLogSlot(AbstractContainerMenu menu) {
-        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
+        int playerInventoryStart = Math.max(10, menu.slots.size() - 36);
         for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
             ItemStack stack = menu.slots.get(slotId).getItem();
             if (!stack.isEmpty() && stack.is(net.minecraft.tags.ItemTags.LOGS)) return slotId;
@@ -831,7 +841,7 @@ private void handleCraftingCycle(Minecraft client) {
     }
 
     private int findAnyPlankSlot(AbstractContainerMenu menu) {
-        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
+        int playerInventoryStart = Math.max(10, menu.slots.size() - 36);
         for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
             ItemStack stack = menu.slots.get(slotId).getItem();
             if (!stack.isEmpty() && stack.is(net.minecraft.tags.ItemTags.PLANKS)) return slotId;
@@ -848,7 +858,7 @@ private void handleCraftingCycle(Minecraft client) {
     }
 
     private int findTargetPickaxeSlot(AbstractContainerMenu menu) {
-        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
+        int playerInventoryStart = Math.max(10, menu.slots.size() - 36);
         for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
             ItemStack stack = menu.slots.get(slotId).getItem();
             if (isTargetPickaxe(stack)) return slotId;
@@ -870,7 +880,7 @@ private void handleCraftingCycle(Minecraft client) {
     }
 
     private int findInventorySlot(AbstractContainerMenu menu, Item item) {
-        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
+        int playerInventoryStart = Math.max(10, menu.slots.size() - 36);
         for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
             ItemStack stack = menu.slots.get(slotId).getItem();
             if (!stack.isEmpty() && stack.getItem() == item) return slotId;
@@ -879,7 +889,7 @@ private void handleCraftingCycle(Minecraft client) {
     }
 
     private int findMergeableInventorySlot(AbstractContainerMenu menu, Item item) {
-        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
+        int playerInventoryStart = Math.max(10, menu.slots.size() - 36);
         for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
             ItemStack stack = menu.slots.get(slotId).getItem();
             if (!stack.isEmpty() && stack.getItem() == item) return slotId;
@@ -888,7 +898,7 @@ private void handleCraftingCycle(Minecraft client) {
     }
 
     private int findEmptyInventorySlot(AbstractContainerMenu menu) {
-        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
+        int playerInventoryStart = Math.max(10, menu.slots.size() - 36);
         for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
             if (menu.slots.get(slotId).getItem().isEmpty()) return slotId;
         }
