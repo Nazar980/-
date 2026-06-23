@@ -18,6 +18,7 @@ public class ImguimcConfig {
     private static ImguimcConfig instance;
 
     public int howManySlots = 54;
+    public int maxActiveSales = 3;
     public int emeraldMaxCost = 0;
     public int woodMaxCost = 0;
     public int emeraldPickaxeCost = 0;
@@ -63,6 +64,7 @@ public class ImguimcConfig {
 
     private void clamp() {
         howManySlots = clampInt(howManySlots, 1, 99);
+        maxActiveSales = clampInt(maxActiveSales, 1, 100);
         emeraldMaxCost = clampMin(emeraldMaxCost, 0);
         woodMaxCost = clampMin(woodMaxCost, 0);
         emeraldPickaxeCost = clampMin(emeraldPickaxeCost, 0);
