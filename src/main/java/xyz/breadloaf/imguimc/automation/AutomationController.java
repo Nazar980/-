@@ -73,15 +73,19 @@ public class AutomationController {
 
         switch (stage) {
             case IDLE, EVALUATE -> evaluateNextStage(client);
-            case SEARCH_STICKS -> sendCommand(client, "ah search Палка", Stage.WAIT_STICKS_SCREEN, "Searching sticks", 14);
-            case WAIT_STICKS_SCREEN -> waitForAuctionScreen(client, Items.STICK, config.woodMaxCost, Stage.BUY_STICKS, Stage.SEARCH_STICKS, "Waiting stick auction", "Retrying stick search");
-            case BUY_STICKS -> buyBestAuctionItem(client, Items.STICK, config.woodMaxCost, Stage.EVALUATE, Stage.SEARCH_STICKS, "Buying sticks", "No valid sticks found");
+            // НОВАЯ СИСТЕМА ЗАКУПКИ ДЕРЕВА
+            case SEARCH_WOOD -> sendCommand(client, "ah search дерево", Stage.WAIT_WOOD_SCREEN, "Searching wood logs", 14);
+            case WAIT_WOOD_SCREEN -> waitForWoodAuctionScreen(client);
+            case BUY_WOOD -> buyBestWoodAuction(client);
+            
             case SEARCH_EMERALDS -> sendCommand(client, "ah search изумруд", Stage.WAIT_EMERALDS_SCREEN, "Searching emeralds", 14);
             case WAIT_EMERALDS_SCREEN -> waitForAuctionScreen(client, Items.EMERALD, config.emeraldMaxCost, Stage.BUY_EMERALDS, Stage.SEARCH_EMERALDS, "Waiting emerald auction", "Retrying emerald search");
             case BUY_EMERALDS -> buyBestAuctionItem(client, Items.EMERALD, config.emeraldMaxCost, Stage.EVALUATE, Stage.SEARCH_EMERALDS, "Buying emeralds", "No valid emeralds found");
+            
             case OPEN_CRAFTING -> openCraftingTable(client);
             case WAIT_CRAFTING -> waitForCraftingMenu(client);
-            case CRAFT_PICKAXE -> craftEmeraldPickaxe(client);
+            case CRAFT_PICKAXE -> handleCraftingCycle(client); // Объединенный адаптивный крафт
+            
             case EQUIP_PICKAXE -> equipEmeraldPickaxe(client);
             case SELL_PICKAXE -> sellEmeraldPickaxe(client);
             
@@ -142,6 +146,7 @@ public class AutomationController {
         return keyName(config.toggleAutomationKey);
     }
 
+    // ЛОГИКА ОЦЕНКИ И ИЗБЕЖАНИЯ ПОВТОРНЫХ ЗАКУПОК
     private void evaluateNextStage(Minecraft client) {
         if (currentActiveSales >= maxActiveSales) {
             setStage(Stage.OPEN_AH_EXPIRED, "Sales limit reached. Clearing expired items", 3);
@@ -153,8 +158,19 @@ public class AutomationController {
             return;
         }
 
-        if (countInventoryItem(client, Items.STICK) < 2) {
-            setStage(Stage.SEARCH_STICKS, "Need sticks", 2);
+        // Проверяем ресурсы. Если у нас ЕСТЬ бревна или ЕСТЬ доски — закупать дерево НЕ НАДО!
+        int sticks = countInventoryItem(client, Items.STICK);
+        int planks = countAnyPlanks(client);
+        int logs = countAnyLogs(client);
+
+        if (sticks < 2) {
+            // Если палок мало, но у нас есть бревна или доски — сразу идем крафтить, минуя аукцион
+            if (logs > 0 || planks > 0) {
+                setStage(Stage.OPEN_CRAFTING, "Have logs/planks, moving to processing", 1);
+                return;
+            }
+            // Если вообще ничего древесного нет — только тогда идем покупать дерево
+            setStage(Stage.SEARCH_WOOD, "Need wood logs", 2);
             return;
         }
 
@@ -172,7 +188,52 @@ public class AutomationController {
         setStage(nextStage, nextStatus, delay);
     }
 
-    private void waitForAuctionScreen(Minecraft client, net.minecraft.world.item.Item item, int maxCostPerItem, Stage successStage, Stage retryStage, String waitingStatus, String retryStatus) {
+    // ОЖИДАНИЕ МЕНЮ С ДЕРЕВОМ
+    private void waitForWoodAuctionScreen(Minecraft client) {
+        AbstractContainerMenu menu = client.player.containerMenu;
+        int upperSlots = Math.max(0, menu.slots.size() - 36);
+
+        if (menu != client.player.inventoryMenu && upperSlots > 10) {
+            if (observedAuctionContainerId != menu.containerId) {
+                observedAuctionContainerId = menu.containerId;
+                observedAuctionMenuTicks = 0;
+            } else {
+                observedAuctionMenuTicks++;
+            }
+        }
+
+        AuctionCandidate candidate = findBestWoodCandidate(client);
+        if (candidate != null) {
+            if (observedAuctionMenuTicks >= AUCTION_PURCHASE_DELAY_TICKS) {
+                setStage(Stage.BUY_WOOD, "Wood auction found best listing", 1);
+                return;
+            }
+            int secondsLeft = Math.max(1, (AUCTION_PURCHASE_DELAY_TICKS - observedAuctionMenuTicks + 19) / 20);
+            status = "Waiting anti-buy delay (Wood): " + secondsLeft + "s";
+            return;
+        }
+
+        if (stageTicks > 40) {
+            setStage(Stage.SEARCH_WOOD, "Retrying wood search", 10);
+            return;
+        }
+        status = "Waiting wood auction";
+    }
+
+    // ПОКУПКА САМОГО ДЕШЕВОГО БРЕВНА
+    private void buyBestWoodAuction(Minecraft client) {
+        AuctionCandidate candidate = findBestWoodCandidate(client);
+        if (candidate == null) {
+            setStage(Stage.SEARCH_WOOD, "No valid wood found, retrying", 5);
+            return;
+        }
+
+        AbstractContainerMenu menu = client.player.containerMenu;
+        client.gameMode.handleInventoryMouseClick(menu.containerId, candidate.slotId, 0, ClickType.QUICK_MOVE, client.player);
+        setStage(Stage.EVALUATE, "Buying logs | per unit: " + (long) candidate.pricePerItem, 6);
+    }
+
+    private void waitForAuctionScreen(Minecraft client, Item item, int maxCostPerItem, Stage successStage, Stage retryStage, String waitingStatus, String retryStatus) {
         AbstractContainerMenu menu = client.player.containerMenu;
         int upperSlots = Math.max(0, menu.slots.size() - 36);
 
@@ -191,7 +252,6 @@ public class AutomationController {
                 setStage(successStage, waitingStatus + " found best listing", 1);
                 return;
             }
-
             int secondsLeft = Math.max(1, (AUCTION_PURCHASE_DELAY_TICKS - observedAuctionMenuTicks + 19) / 20);
             status = "Waiting anti-buy delay: " + secondsLeft + "s";
             return;
@@ -201,11 +261,10 @@ public class AutomationController {
             setStage(retryStage, retryStatus, 10);
             return;
         }
-
         status = waitingStatus;
     }
 
-    private void buyBestAuctionItem(Minecraft client, net.minecraft.world.item.Item item, int maxCostPerItem, Stage successStage, Stage failStage, String successStatus, String failStatus) {
+    private void buyBestAuctionItem(Minecraft client, Item item, int maxCostPerItem, Stage successStage, Stage failStage, String successStatus, String failStatus) {
         AuctionCandidate candidate = findBestAuctionCandidate(client, item, maxCostPerItem);
         if (candidate == null) {
             setStage(failStage, failStatus, 5);
@@ -254,11 +313,11 @@ public class AutomationController {
             setStage(Stage.OPEN_CRAFTING, "Retry crafting table", 4);
             return;
         }
-
         status = "Waiting crafting table";
     }
 
-    private void craftEmeraldPickaxe(Minecraft client) {
+    // ИНТЕЛЛЕКТУАЛЬНЫЙ СУПЕР-БЫСТРЫЙ ЦИКЛ ПЕРЕРАБОТКИ
+    private void handleCraftingCycle(Minecraft client) {
         if (!(client.player.containerMenu instanceof CraftingMenu menu)) {
             resetCraftingPlacement();
             setStage(Stage.OPEN_CRAFTING, "Crafting menu closed", 2);
@@ -277,38 +336,78 @@ public class AutomationController {
             return;
         }
 
+        // ШАГ 1: Если в инвентаре есть брёвна — сначала перерабатываем их в ДОСКИ
+        int logSlot = findAnyLogSlot(menu);
+        if (logSlot != -1 && countInventoryItem(client, Items.STICK) < 2) {
+            // Кладем 1 бревно в 1-й слот верстака
+            client.gameMode.handleInventoryMouseClick(menu.containerId, logSlot, 0, ClickType.PICKUP, client.player);
+            craftingPlacementPhase = 1;
+            craftingSourceSlot = logSlot;
+            craftingTargetSlot = 1; // Левый верхний слот крафта
+            craftingExpectedItem = menu.slots.get(logSlot).getItem().getItem();
+            status = "Processing log to planks";
+            cooldownTicks = 1;
+            return;
+        }
+
+        // ШАГ 2: Если брёвен нет, но есть доски, а палок всё ещё мало — делаем ПАЛКИ
+        int plankSlot = findAnyPlankSlot(menu);
+        if (plankSlot != -1 && countInventoryItem(client, Items.STICK) < 2) {
+            // Для палок нужны 2 доски: в слот 1 и в слот 4 (друг под другом)
+            boolean slot1Ok = menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
+            boolean slot4Ok = menu.slots.get(4).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
+            
+            if (!slot1Ok || !slot4Ok) {
+                client.gameMode.handleInventoryMouseClick(menu.containerId, plankSlot, 0, ClickType.PICKUP, client.player);
+                craftingPlacementPhase = 1;
+                craftingSourceSlot = plankSlot;
+                craftingTargetSlot = !slot1Ok ? 1 : 4;
+                craftingExpectedItem = menu.slots.get(plankSlot).getItem().getItem();
+                status = "Placing planks for sticks";
+                cooldownTicks = 1;
+                return;
+            }
+        }
+
+        // ШАГ 3: Если палки и изумруды на месте — крафтим КИРКУ
         int nextTargetSlot = findNextMissingRecipeSlot(menu);
         if (nextTargetSlot != -1) {
             Item expectedItem = expectedRecipeItemForSlot(nextTargetSlot);
             int sourceSlot = findInventorySlot(menu, expectedItem);
             if (sourceSlot == -1) {
-                setStage(Stage.EVALUATE, "Missing ingredient for slot " + nextTargetSlot, 2);
+                setStage(Stage.EVALUATE, "Missing ingredient for pickaxe slot " + nextTargetSlot, 2);
                 return;
             }
 
-            // Моментально берем пачку предметов в руку
             client.gameMode.handleInventoryMouseClick(menu.containerId, sourceSlot, 0, ClickType.PICKUP, client.player);
             craftingPlacementPhase = 1;
             craftingSourceSlot = sourceSlot;
             craftingTargetSlot = nextTargetSlot;
             craftingExpectedItem = expectedItem;
-            status = "Picked up bulk ingredient for slot " + nextTargetSlot;
-            cooldownTicks = 1; // Ускорение: 1 тик задержки
+            status = "Placing pickaxe component into slot " + nextTargetSlot;
+            cooldownTicks = 1;
             return;
         }
 
+        // ЗАБИРАЕМ ГОТОВЫЙ ПРЕДМЕТ ИЗ СЛОТА РЕЗУЛЬТАТА (0 слот)
         ItemStack result = menu.slots.get(0).getItem();
         if (result.isEmpty()) {
-            status = "Waiting craft result";
+            status = "Waiting item processing result";
             return;
         }
 
-        lastCraftedPickaxeName = normalizedItemName(result);
-        resetCraftingPlacement();
-        
-        // Моментально забираем результат шифт-кликом
-        client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
-        setStage(Stage.EQUIP_PICKAXE, "Craft result taken: " + lastCraftedPickaxeName, 2);
+        if (isTargetPickaxe(result)) {
+            lastCraftedPickaxeName = normalizedItemName(result);
+            resetCraftingPlacement();
+            client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
+            setStage(Stage.EQUIP_PICKAXE, "Crafted: " + lastCraftedPickaxeName, 2);
+        } else {
+            // Если результатом крафта были доски или палки — моментально забираем их шифт-кликом
+            resetCraftingPlacement();
+            client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
+            status = "Collected processed sub-resource";
+            cooldownTicks = 1;
+        }
     }
 
     private void continueCraftPlacement(Minecraft client, CraftingMenu menu) {
@@ -316,48 +415,42 @@ public class AutomationController {
             ItemStack carried = menu.getCarried();
             if (carried.isEmpty() || carried.getItem() != craftingExpectedItem) {
                 resetCraftingPlacement();
-                status = "Failed to pick up crafting ingredient";
+                status = "Failed to secure component";
                 cooldownTicks = 2;
                 return;
             }
 
-            // Положили 1 единицу в целевой слот
             client.gameMode.handleInventoryMouseClick(menu.containerId, craftingTargetSlot, 1, ClickType.PICKUP, client.player);
             craftingPlacementPhase = 2;
-            status = "Placing unit into slot " + craftingTargetSlot;
-            cooldownTicks = 1; // Минимальная задержка
+            cooldownTicks = 1;
             return;
         }
 
         if (craftingPlacementPhase == 2) {
-            // Ультра-скорость: если в руке еще есть блоки, проверяем следующий слот под этот же ресурс
+            // Если делаем кирку, продолжаем раскладывать тот же тип ресурса
             int nextTargetSlot = findNextMissingRecipeSlot(menu);
             if (nextTargetSlot != -1 && expectedRecipeItemForSlot(nextTargetSlot) == craftingExpectedItem) {
                 craftingTargetSlot = nextTargetSlot;
                 client.gameMode.handleInventoryMouseClick(menu.containerId, craftingTargetSlot, 1, ClickType.PICKUP, client.player);
-                status = "Placing next unit into slot " + craftingTargetSlot;
                 cooldownTicks = 1;
                 return;
             }
 
-            // Если распределение данного ресурса закончено, возвращаем пачку на исходное место
+            // Возврат остатка пачки в инвентарь
             if (!menu.getCarried().isEmpty()) {
                 client.gameMode.handleInventoryMouseClick(menu.containerId, craftingSourceSlot, 0, ClickType.PICKUP, client.player);
                 craftingPlacementPhase = 3;
-                status = "Returning remaining stack";
                 cooldownTicks = 1;
                 return;
             }
 
             resetCraftingPlacement();
-            status = "Ingredient placement finished";
             cooldownTicks = 1;
             return;
         }
 
         if (craftingPlacementPhase == 3) {
             resetCraftingPlacement();
-            status = "Ingredient placed";
             cooldownTicks = 1;
         }
     }
@@ -388,12 +481,8 @@ public class AutomationController {
             resetCraftingPlacement();
             return;
         }
-
         int targetSlot = findMergeableInventorySlot(menu, carried.getItem());
-        if (targetSlot == -1) {
-            targetSlot = findEmptyInventorySlot(menu);
-        }
-
+        if (targetSlot == -1) targetSlot = findEmptyInventorySlot(menu);
         if (targetSlot != -1) {
             client.gameMode.handleInventoryMouseClick(menu.containerId, targetSlot, 0, ClickType.PICKUP, client.player);
         }
@@ -450,20 +539,18 @@ public class AutomationController {
         setStage(Stage.EVALUATE, "Selling emerald pickaxe for " + config.emeraldPickaxeCost, 15);
     }
 
-    // ИСПРАВЛЕННАЯ ЛОГИКА ВХОДА В ХРАНИЛИЩЕ АУКЦИОНА
     private void waitForAhMainMenu(Minecraft client) {
         AbstractContainerMenu menu = client.player.containerMenu;
         int upperSlots = Math.max(0, menu.slots.size() - 36);
 
-        // Ждем, пока откроется Главное Меню аукциона (обычно 54 слота)
-        if (menu != client.player.inventoryMenu && upperSlots > 45) {
-            setStage(Stage.CLICK_ENDER_CHEST, "AH Main Menu loaded, clicking Storage button", 4);
+        if (menu != client.player.inventoryMenu && upperSlots > 10) {
+            setStage(Stage.CLICK_ENDER_CHEST, "AH Main Menu loaded, searching for storage button", 2);
         } else if (stageTicks > 40) {
             setStage(Stage.OPEN_AH_EXPIRED, "AH timeout, retrying command", 10);
         }
     }
 
-private void clickEnderChestSlot(Minecraft client) {
+    private void clickEnderChestSlot(Minecraft client) {
         AbstractContainerMenu menu = client.player.containerMenu;
         if (menu == client.player.inventoryMenu) {
             setStage(Stage.OPEN_AH_EXPIRED, "Menu closed unexpectedly, restarting", 5);
@@ -473,22 +560,18 @@ private void clickEnderChestSlot(Minecraft client) {
         int upperSlots = Math.max(0, menu.slots.size() - 36);
         int targetEnderChestSlot = -1;
 
-        // Просто ищем ЛЮБОЙ эндер-сундук в интерфейсе меню
         for (int i = 0; i < upperSlots; i++) {
             ItemStack stack = menu.slots.get(i).getItem();
             if (!stack.isEmpty() && stack.getItem() == Items.ENDER_CHEST) {
                 targetEnderChestSlot = i;
-                break; // Нашли кнопку хранилища, выходим из цикла
+                break;
             }
         }
 
-        // Если нашли эндер-сундук — кликаем по нему ЛКМ
         if (targetEnderChestSlot != -1) {
             client.gameMode.handleInventoryMouseClick(menu.containerId, targetEnderChestSlot, 0, ClickType.PICKUP, client.player);
-            // Переходим в стадию ожидания открытия самого хранилища
             setStage(Stage.WAIT_STORAGE_MENU, "Clicked Ender Chest at slot " + targetEnderChestSlot + ", waiting storage", 6);
         } else {
-            // Если открыли /ah, но эндер-сундук почему-то не отрисовался за 20 тиков
             if (stageTicks > 20) {
                 client.player.closeContainer();
                 setStage(Stage.EVALUATE, "Ender chest button not found in AH menu, retrying cycle", 5);
@@ -503,9 +586,6 @@ private void clickEnderChestSlot(Minecraft client) {
             setStage(Stage.OPEN_AH_EXPIRED, "Storage closed, reopening", 5);
             return;
         }
-
-        // Даем серверу пару тиков обновить содержимое слотов под Хранилище. 
-        // Если стадия дождалась своего тика (cooldownTicks истек), переходим к сбору.
         setStage(Stage.COLLECT_EXPIRED, "Storage menu ready, start collecting", 4);
     }
 
@@ -519,29 +599,58 @@ private void clickEnderChestSlot(Minecraft client) {
         int upperSlots = Math.max(0, menu.slots.size() - 36);
         boolean foundItem = false;
 
-        // Теперь мы ГАРАНТИРОВАННО внутри хранилища, сканируем слоты на наличие возвращенных предметов
         for (int i = 0; i < upperSlots; i++) {
             ItemStack stack = menu.slots.get(i).getItem();
             if (!stack.isEmpty() && isTargetPickaxe(stack)) {
-                // Моментально забираем лот через шифт-клик
                 client.gameMode.handleInventoryMouseClick(menu.containerId, i, 0, ClickType.QUICK_MOVE, client.player);
-                
                 foundItem = true;
-                cooldownTicks = 4; // Снизили задержку скупа лотов до 4 тиков для быстродействия
+                cooldownTicks = 4;
                 status = "Collecting expired item from slot " + i;
                 break;
             }
         }
 
-        // Если в хранилище больше нет подходящих кирок
         if (!foundItem && stageTicks > 15) {
             client.player.closeContainer();
-            currentActiveSales = 0; // Сбрасываем счетчик лимитов
+            currentActiveSales = 0;
             setStage(Stage.EVALUATE, "All expired items collected, restarting cycle", 5);
         }
     }
 
-    private AuctionCandidate findBestAuctionCandidate(Minecraft client, net.minecraft.world.item.Item item, int maxCostPerItem) {
+    // ПОИСК ОПТИМАЛЬНОГО ЛОТА С ДЕРЕВОМ (ЛЮБЫЕ БРЕВНА)
+    private AuctionCandidate findBestWoodCandidate(Minecraft client) {
+        if (client.player == null || client.screen == null) return null;
+
+        AbstractContainerMenu menu = client.player.containerMenu;
+        int upperSlots = Math.max(0, menu.slots.size() - 36);
+        if (menu == client.player.inventoryMenu || upperSlots <= 10) return null;
+
+        int scanLimit = Math.min(upperSlots, Math.max(1, config.howManySlots));
+        AuctionCandidate best = null;
+
+        for (int slotId = 0; slotId < scanLimit; slotId++) {
+            Slot slot = menu.slots.get(slotId);
+            ItemStack stack = slot.getItem();
+            if (stack.isEmpty()) continue;
+
+            // Проверяем через теги майнкрафта, является ли предмет бревном (Logs)
+            boolean isLog = stack.is(net.minecraft.tags.ItemTags.LOGS);
+            if (!isLog) continue;
+
+            long totalPrice = extractPriceFromLore(stack);
+            if (totalPrice <= 0) continue;
+
+            double pricePerItem = totalPrice / (double) Math.max(1, stack.getCount());
+            if (config.woodMaxCost > 0 && pricePerItem > config.woodMaxCost) continue;
+
+            if (best == null || pricePerItem < best.pricePerItem || (pricePerItem == best.pricePerItem && stack.getCount() > best.stackCount)) {
+                best = new AuctionCandidate(slotId, totalPrice, pricePerItem, stack.getCount());
+            }
+        }
+        return best;
+    }
+
+    private AuctionCandidate findBestAuctionCandidate(Minecraft client, Item item, int maxCostPerItem) {
         if (client.player == null || client.screen == null) return null;
 
         AbstractContainerMenu menu = client.player.containerMenu;
@@ -634,7 +743,7 @@ private void clickEnderChestSlot(Minecraft client) {
                 || line.contains("колич") || line.contains("amount") || line.contains("x");
     }
 
-    private int countInventoryItem(Minecraft client, net.minecraft.world.item.Item item) {
+    private int countInventoryItem(Minecraft client, Item item) {
         int count = 0;
         for (ItemStack stack : client.player.getInventory().items) {
             if (!stack.isEmpty() && stack.getItem() == item) {
@@ -644,133 +753,27 @@ private void clickEnderChestSlot(Minecraft client) {
         return count;
     }
 
-    private boolean hasEmeraldPickaxe(Minecraft client) {
-        if (isTargetPickaxe(client.player.getMainHandItem())) return true;
+    // Хелперы подсчета любых типов брёвен и досок
+    private int countAnyLogs(Minecraft client) {
+        int count = 0;
         for (ItemStack stack : client.player.getInventory().items) {
-            if (isTargetPickaxe(stack)) return true;
-        }
-        return false;
-    }
-
-    private int findTargetPickaxeSlot(AbstractContainerMenu menu) {
-        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
-        for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
-            ItemStack stack = menu.slots.get(slotId).getItem();
-            if (isTargetPickaxe(stack)) return slotId;
-        }
-        return -1;
-    }
-
-    private boolean isTargetPickaxe(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) return false;
-        String normalizedName = normalizedItemName(stack);
-        if (!lastCraftedPickaxeName.isEmpty() && normalizedName.equals(lastCraftedPickaxeName)) return true;
-
-        String descriptionId = stack.getItem().getDescriptionId().toLowerCase(Locale.ROOT);
-        return descriptionId.contains("pickaxe") || normalizedName.contains("кирка") || normalizedName.contains("pickaxe");
-    }
-
-    private String normalizedItemName(ItemStack stack) {
-        return stack.getHoverName().getString().trim().toLowerCase(Locale.ROOT);
-    }
-
-    private int findInventorySlot(AbstractContainerMenu menu, Item item) {
-        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
-        for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
-            ItemStack stack = menu.slots.get(slotId).getItem();
-            if (!stack.isEmpty() && stack.getItem() == item) return slotId;
-        }
-        return -1;
-    }
-
-    private int findMergeableInventorySlot(AbstractContainerMenu menu, Item item) {
-        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
-        for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
-            ItemStack stack = menu.slots.get(slotId).getItem();
-            if (!stack.isEmpty() && stack.getItem() == item) return slotId;
-        }
-        return -1;
-    }
-
-    private int findEmptyInventorySlot(AbstractContainerMenu menu) {
-        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
-        for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
-            if (menu.slots.get(slotId).getItem().isEmpty()) return slotId;
-        }
-        return -1;
-    }
-
-    private void setStage(Stage newStage, String newStatus, int delayTicks) {
-        if (newStage == Stage.SEARCH_STICKS || newStage == Stage.SEARCH_EMERALDS || newStage == Stage.IDLE || newStage == Stage.EVALUATE) {
-            observedAuctionContainerId = -1;
-            observedAuctionMenuTicks = 0;
-        }
-
-        if (newStage != Stage.CRAFT_PICKAXE) {
-            resetCraftingPlacement();
-        }
-
-        stage = newStage;
-        status = newStatus;
-        cooldownTicks = delayTicks;
-        stageTicks = 0;
-    }
-
-    private String keyName(int key) {
-        return switch (key) {
-            case GLFW.GLFW_KEY_UNKNOWN -> "UNKNOWN";
-            case GLFW.GLFW_KEY_RIGHT_SHIFT -> "RIGHT SHIFT";
-            case GLFW.GLFW_KEY_LEFT_SHIFT -> "LEFT SHIFT";
-            case GLFW.GLFW_KEY_LEFT_CONTROL -> "LEFT CTRL";
-            case GLFW.GLFW_KEY_RIGHT_CONTROL -> "RIGHT CTRL";
-            case GLFW.GLFW_KEY_LEFT_ALT -> "LEFT ALT";
-            case GLFW.GLFW_KEY_RIGHT_ALT -> "RIGHT ALT";
-            case GLFW.GLFW_KEY_SPACE -> "SPACE";
-            case GLFW.GLFW_KEY_ENTER -> "ENTER";
-            case GLFW.GLFW_KEY_TAB -> "TAB";
-            case GLFW.GLFW_KEY_ESCAPE -> "ESC";
-            case GLFW.GLFW_KEY_F1 -> "F1";
-            case GLFW.GLFW_KEY_F2 -> "F2";
-            case GLFW.GLFW_KEY_F3 -> "F3";
-            case GLFW.GLFW_KEY_F4 -> "F4";
-            case GLFW.GLFW_KEY_F5 -> "F5";
-            case GLFW.GLFW_KEY_F6 -> "F6";
-            case GLFW.GLFW_KEY_F7 -> "F7";
-            case GLFW.GLFW_KEY_F8 -> "F8";
-            case GLFW.GLFW_KEY_F9 -> "F9";
-            case GLFW.GLFW_KEY_F10 -> "F10";
-            case GLFW.GLFW_KEY_F11 -> "F11";
-            case GLFW.GLFW_KEY_F12 -> "F12";
-            default -> {
-                String glfwName = GLFW.glfwGetKeyName(key, 0);
-                yield glfwName == null ? "KEY_" + key : glfwName.toUpperCase(Locale.ROOT);
+            if (!stack.isEmpty() && stack.is(net.minecraft.tags.ItemTags.LOGS)) {
+                count += stack.getCount();
             }
-        };
+        }
+        return count;
     }
 
-    private enum Stage {
-        IDLE,
-        EVALUATE,
-        SEARCH_STICKS,
-        WAIT_STICKS_SCREEN,
-        BUY_STICKS,
-        SEARCH_EMERALDS,
-        WAIT_EMERALDS_SCREEN,
-        BUY_EMERALDS,
-        OPEN_CRAFTING,
-        WAIT_CRAFTING,
-        CRAFT_PICKAXE,
-        EQUIP_PICKAXE,
-        SELL_PICKAXE,
-        
-        // Переработанные стадии аукциона
-        OPEN_AH_EXPIRED,
-        WAIT_AH_MAIN,
-        CLICK_ENDER_CHEST,
-        WAIT_STORAGE_MENU,
-        COLLECT_EXPIRED
+    private int countAnyPlanks(Minecraft client) {
+        int count = 0;
+        for (ItemStack stack : client.player.getInventory().items) {
+            if (!stack.isEmpty() && stack.is(net.minecraft.tags.ItemTags.PLANKS)) {
+                count += stack.getCount();
+            }
+        }
+        return count;
     }
 
-    private record AuctionCandidate(int slotId, long totalPrice, double pricePerItem, int stackCount) {
-    }
-}
+    private int findAnyLogSlot(AbstractContainerMenu menu) {
+        int playerInventoryStart = Math.max(0, menu.slots.size() - 36);
+        for (int slotId = playerInventoryStart; slotId < menu.slots.size(); slotId++) {
