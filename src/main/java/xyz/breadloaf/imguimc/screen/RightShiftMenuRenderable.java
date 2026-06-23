@@ -104,7 +104,7 @@ public class RightShiftMenuRenderable implements Renderable {
 
     private void syncInputsFromConfig() {
         howManySlotsInput.set(String.valueOf(config.howManySlots));
-        maxActiveSalesInput.set(String.valueOf(config.maxActiveSales)); // Синхронизация лимита лотов
+        maxActiveSalesInput.set(String.valueOf(config.maxActiveSales)); 
         emeraldMaxCostInput.set(String.valueOf(config.emeraldMaxCost));
         woodMaxCostInput.set(String.valueOf(config.woodMaxCost));
         emeraldPickaxeCostInput.set(String.valueOf(config.emeraldPickaxeCost));
