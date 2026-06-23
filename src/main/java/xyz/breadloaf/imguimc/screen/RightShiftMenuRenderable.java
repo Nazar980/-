@@ -21,7 +21,7 @@ public class RightShiftMenuRenderable implements Renderable {
     private final AutomationController automationController = AutomationController.get();
 
     private final ImString howManySlotsInput = new ImString(3);
-    private final ImString maxActiveSalesInput = new ImString(3); // Буфер для нового инпута
+    private final ImString maxActiveSalesInput = new ImString(3);
     private final ImString emeraldMaxCostInput = new ImString(16);
     private final ImString woodMaxCostInput = new ImString(16);
     private final ImString emeraldPickaxeCostInput = new ImString(16);
@@ -32,7 +32,7 @@ public class RightShiftMenuRenderable implements Renderable {
 
     @Override
     public String getName() {
-        return "Right Shift Menu";
+        return "Menu";
     }
 
     @Override
@@ -51,7 +51,7 @@ public class RightShiftMenuRenderable implements Renderable {
         }
 
         ImGui.setNextWindowPos(20, 20, ImGuiCond.FirstUseEver);
-        ImGui.setNextWindowSize(420, 290, ImGuiCond.FirstUseEver); // Немного увеличил высоту под новый инпут
+        ImGui.setNextWindowSize(520, 390, ImGuiCond.FirstUseEver);
 
         int windowFlags = ImGuiWindowFlags.NoCollapse;
 
@@ -75,7 +75,6 @@ public class RightShiftMenuRenderable implements Renderable {
         renderInputWithBlink("How many slots", howManySlotsInput, ImGuiInputTextFlags.CharsDecimal);
         handleClampedInput(howManySlotsInput, 1, 99, value -> config.howManySlots = value, config.howManySlots);
 
-        // НОВЫЙ ИНПУТ: Ограничение максимального количества активных лотов
         renderInputWithBlink("Max Active Sales", maxActiveSalesInput, ImGuiInputTextFlags.CharsDecimal);
         handleClampedInput(maxActiveSalesInput, 1, 100, value -> config.maxActiveSales = value, config.maxActiveSales);
 
@@ -89,7 +88,6 @@ public class RightShiftMenuRenderable implements Renderable {
         handleMinimumInput(emeraldPickaxeCostInput, value -> config.emeraldPickaxeCost = value, config.emeraldPickaxeCost);
 
         ImGui.spacing();
-        ImGui.button("Start");
 
         ImGui.end();
     }
