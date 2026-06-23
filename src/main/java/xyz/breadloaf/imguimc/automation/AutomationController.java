@@ -344,35 +344,38 @@ private void handleCraftingCycle(Minecraft client) {
             return;
         }
 
-// ШАГ 2: БЕЗОПАСНЫЙ МАССОВЫЙ КРАФТ ПАЛОК (Явный Shift+ЛКМ в оба слота)
+// ШАГ 2: МАССОВЫЙ КРАФТ ПАЛОК (Поочередная выгрузка двух разных стаков через ЛКМ)
         int plankSlot = findAnyPlankSlot(menu);
         if (plankSlot != -1 && sticks < 2) {
-            boolean slot1Ok = menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
-            boolean slot4Ok = menu.slots.get(4).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
+            ItemStack slot1Item = menu.slots.get(1).getItem();
+            ItemStack slot4Item = menu.slots.get(4).getItem();
+            
+            boolean slot1Ok = slot1Item.is(net.minecraft.tags.ItemTags.PLANKS);
+            boolean slot4Ok = slot4Item.is(net.minecraft.tags.ItemTags.PLANKS);
             
             if (!slot1Ok || !slot4Ok) {
                 ItemStack carried = menu.getCarried();
                 
-                // 1. Если в руке ещё нет досок — берём стак из инвентаря ЛКМ
+                // Если в руке ничего нет — берем стак досок из инвентаря ЛКМ (button = 0)
                 if (carried.isEmpty() || !carried.is(net.minecraft.tags.ItemTags.PLANKS)) {
                     client.gameMode.handleInventoryMouseClick(menu.containerId, plankSlot, 0, ClickType.PICKUP, client.player);
-                    status = "Picking up planks stack";
+                    status = "Picking up planks stack with LMB";
                     cooldownTicks = 2;
                     return;
                 }
                 
-                // 2. Если первый слот пустой — закидываем туда часть стака через Shift+ЛКМ
+                // Если стак в руке и слот 1 еще пустой — отдаем весь стак туда через ЛКМ (button = 0)
                 if (!slot1Ok) {
-                    client.gameMode.handleInventoryMouseClick(menu.containerId, 1, 0, ClickType.QUICK_MOVE, client.player);
-                    status = "Shift-clicking planks into slot 1";
+                    client.gameMode.handleInventoryMouseClick(menu.containerId, 1, 0, ClickType.PICKUP, client.player);
+                    status = "Placing entire first stack into slot 1 via LMB";
                     cooldownTicks = 2;
                     return;
                 }
                 
-                // 3. Если первый уже заполнен, а четвёртый нет — закидываем остаток стака в слот 4 через Shift+ЛКМ
+                // Если слот 1 уже заполнен, а слот 4 пустой — отдаем весь удерживаемый (второй) стак туда через ЛКМ (button = 0)
                 if (!slot4Ok) {
-                    client.gameMode.handleInventoryMouseClick(menu.containerId, 4, 0, ClickType.QUICK_MOVE, client.player);
-                    status = "Shift-clicking planks into slot 4";
+                    client.gameMode.handleInventoryMouseClick(menu.containerId, 4, 0, ClickType.PICKUP, client.player);
+                    status = "Placing entire second stack into slot 4 via LMB";
                     cooldownTicks = 2;
                     return;
                 }
