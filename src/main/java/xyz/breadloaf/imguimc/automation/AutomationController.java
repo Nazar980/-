@@ -463,21 +463,38 @@ public class AutomationController {
         }
     }
 
-    private void clickEnderChestSlot(Minecraft client) {
+private void clickEnderChestSlot(Minecraft client) {
         AbstractContainerMenu menu = client.player.containerMenu;
         if (menu == client.player.inventoryMenu) {
             setStage(Stage.OPEN_AH_EXPIRED, "Menu closed unexpectedly, restarting", 5);
             return;
         }
 
-        // Кнопка входа в хранилище (46 слот = индекс 45)
-        int enderChestSlotId = 45; 
-        
-        // Кликаем по ней ЛКМ, чтобы отправить пакет на открытие Хранилища
-        client.gameMode.handleInventoryMouseClick(menu.containerId, enderChestSlotId, 0, ClickType.PICKUP, client.player);
-        
-        // Переключаемся на стадию ОЖИДАНИЯ нового интерфейса хранилища, а не сбор предметов!
-        setStage(Stage.WAIT_STORAGE_MENU, "Waiting for Storage menu to load", 6);
+        int upperSlots = Math.max(0, menu.slots.size() - 36);
+        int targetEnderChestSlot = -1;
+
+        // Просто ищем ЛЮБОЙ эндер-сундук в интерфейсе меню
+        for (int i = 0; i < upperSlots; i++) {
+            ItemStack stack = menu.slots.get(i).getItem();
+            if (!stack.isEmpty() && stack.getItem() == Items.ENDER_CHEST) {
+                targetEnderChestSlot = i;
+                break; // Нашли кнопку хранилища, выходим из цикла
+            }
+        }
+
+        // Если нашли эндер-сундук — кликаем по нему ЛКМ
+        if (targetEnderChestSlot != -1) {
+            client.gameMode.handleInventoryMouseClick(menu.containerId, targetEnderChestSlot, 0, ClickType.PICKUP, client.player);
+            // Переходим в стадию ожидания открытия самого хранилища
+            setStage(Stage.WAIT_STORAGE_MENU, "Clicked Ender Chest at slot " + targetEnderChestSlot + ", waiting storage", 6);
+        } else {
+            // Если открыли /ah, но эндер-сундук почему-то не отрисовался за 20 тиков
+            if (stageTicks > 20) {
+                client.player.closeContainer();
+                setStage(Stage.EVALUATE, "Ender chest button not found in AH menu, retrying cycle", 5);
+            }
+            status = "Searching for Ender Chest button...";
+        }
     }
 
     private void waitForStorageMenu(Minecraft client) {
