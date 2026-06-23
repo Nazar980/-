@@ -344,7 +344,7 @@ private void handleCraftingCycle(Minecraft client) {
             return;
         }
 
-        // ШАГ 2: КРАФТ ПАЛОК ИЗ ДОСОК (Безопасный ручной полу-автомат)
+// ШАГ 2: БЕЗОПАСНЫЙ МАССОВЫЙ КРАФТ ПАЛОК (Явный Shift+ЛКМ в оба слота)
         int plankSlot = findAnyPlankSlot(menu);
         if (plankSlot != -1 && sticks < 2) {
             boolean slot1Ok = menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
@@ -353,24 +353,26 @@ private void handleCraftingCycle(Minecraft client) {
             if (!slot1Ok || !slot4Ok) {
                 ItemStack carried = menu.getCarried();
                 
-                // Если в руке ничего нет — берём доски из инвентаря
+                // 1. Если в руке ещё нет досок — берём стак из инвентаря ЛКМ
                 if (carried.isEmpty() || !carried.is(net.minecraft.tags.ItemTags.PLANKS)) {
                     client.gameMode.handleInventoryMouseClick(menu.containerId, plankSlot, 0, ClickType.PICKUP, client.player);
-                    status = "Picking up planks for sticks";
+                    status = "Picking up planks stack";
                     cooldownTicks = 2;
                     return;
                 }
                 
-                // Если доски в руке — аккуратно кладём по 1 штуке (Правый клик, button = 1)
+                // 2. Если первый слот пустой — закидываем туда часть стака через Shift+ЛКМ
                 if (!slot1Ok) {
-                    client.gameMode.handleInventoryMouseClick(menu.containerId, 1, 1, ClickType.PICKUP, client.player);
-                    status = "Placing first plank";
+                    client.gameMode.handleInventoryMouseClick(menu.containerId, 1, 0, ClickType.QUICK_MOVE, client.player);
+                    status = "Shift-clicking planks into slot 1";
                     cooldownTicks = 2;
                     return;
                 }
+                
+                // 3. Если первый уже заполнен, а четвёртый нет — закидываем остаток стака в слот 4 через Shift+ЛКМ
                 if (!slot4Ok) {
-                    client.gameMode.handleInventoryMouseClick(menu.containerId, 4, 1, ClickType.PICKUP, client.player);
-                    status = "Placing second plank";
+                    client.gameMode.handleInventoryMouseClick(menu.containerId, 4, 0, ClickType.QUICK_MOVE, client.player);
+                    status = "Shift-clicking planks into slot 4";
                     cooldownTicks = 2;
                     return;
                 }
