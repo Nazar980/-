@@ -485,7 +485,7 @@ public class AutomationController {
         setStage(Stage.COLLECT_EXPIRED, "Opened Expired Items / My Listings tab", 15);
     }
 
-    private void collectExpiredItems(Minecraft client) {
+private void collectExpiredItems(Minecraft client) {
         AbstractContainerMenu menu = client.player.containerMenu;
         if (menu == client.player.inventoryMenu) {
             // Если меню закрылось или нас выбросило, возвращаемся в оценку ситуации
@@ -499,15 +499,14 @@ public class AutomationController {
         // Сканируем верхнюю часть меню (интерфейс возврата лотов)
         for (int i = 0; i < upperSlots; i++) {
             ItemStack stack = menu.slots.get(i).getItem();
-            // Проверяем, лежит ли в слоте кирка или возвращаемый предмет (исключая декоративные панели/стекла меню)
-            if (!stack.isEmpty() && (stack.getItem() == Items.EMERALD_PICKAXE || isTargetPickaxe(stack))) {
-                // Забираем с помощью комбинации ЛКМ + ПКМ как просил, или быстрым Shift-кликом (QUICK_MOVE)
-                // На многих серверах Shift-клик (QUICK_MOVE) забирает лот моментально. 
-                // Сделаем QUICK_MOVE, если плагин требует именно ЛКМ+ПКМ — перепишем на последовательность кликов.
+            // ИСПРАВЛЕНО: Убрали несуществующий Items.EMERALD_PICKAXE. 
+            // Теперь метод relies исключительно на исправный isTargetPickaxe, который проверяет имя
+            if (!stack.isEmpty() && isTargetPickaxe(stack)) {
+                // Забираем с помощью быстрого Shift-клика (QUICK_MOVE)
                 client.gameMode.handleInventoryMouseClick(menu.containerId, i, 0, ClickType.QUICK_MOVE, client.player);
                 
                 foundItem = true;
-                cooldownTicks = 8; // Небольшая задержка между кликами во избежание кика за флуд пакетами
+                cooldownTicks = 8; // Задержка между кликами во избежание кика за флуд пакетами
                 status = "Collecting expired item from slot " + i;
                 break;
             }
