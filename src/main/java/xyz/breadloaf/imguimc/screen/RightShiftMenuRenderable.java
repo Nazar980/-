@@ -21,6 +21,7 @@ public class RightShiftMenuRenderable implements Renderable {
     private final AutomationController automationController = AutomationController.get();
 
     private final ImString howManySlotsInput = new ImString(3);
+    private final ImString maxActiveSalesInput = new ImString(3); // Буфер для нового инпута
     private final ImString emeraldMaxCostInput = new ImString(16);
     private final ImString woodMaxCostInput = new ImString(16);
     private final ImString emeraldPickaxeCostInput = new ImString(16);
@@ -50,7 +51,7 @@ public class RightShiftMenuRenderable implements Renderable {
         }
 
         ImGui.setNextWindowPos(20, 20, ImGuiCond.FirstUseEver);
-        ImGui.setNextWindowSize(420, 260, ImGuiCond.FirstUseEver);
+        ImGui.setNextWindowSize(420, 290, ImGuiCond.FirstUseEver); // Немного увеличил высоту под новый инпут
 
         int windowFlags = ImGuiWindowFlags.NoCollapse;
 
@@ -73,6 +74,10 @@ public class RightShiftMenuRenderable implements Renderable {
         ImGui.spacing();
         renderInputWithBlink("How many slots", howManySlotsInput, ImGuiInputTextFlags.CharsDecimal);
         handleClampedInput(howManySlotsInput, 1, 99, value -> config.howManySlots = value, config.howManySlots);
+
+        // НОВЫЙ ИНПУТ: Ограничение максимального количества активных лотов
+        renderInputWithBlink("Max Active Sales", maxActiveSalesInput, ImGuiInputTextFlags.CharsDecimal);
+        handleClampedInput(maxActiveSalesInput, 1, 100, value -> config.maxActiveSales = value, config.maxActiveSales);
 
         renderInputWithBlink("Emerald Max Cost", emeraldMaxCostInput, ImGuiInputTextFlags.CharsDecimal);
         handleMinimumInput(emeraldMaxCostInput, value -> config.emeraldMaxCost = value, config.emeraldMaxCost);
@@ -101,6 +106,7 @@ public class RightShiftMenuRenderable implements Renderable {
 
     private void syncInputsFromConfig() {
         howManySlotsInput.set(String.valueOf(config.howManySlots));
+        maxActiveSalesInput.set(String.valueOf(config.maxActiveSales)); // Синхронизация лимита лотов
         emeraldMaxCostInput.set(String.valueOf(config.emeraldMaxCost));
         woodMaxCostInput.set(String.valueOf(config.woodMaxCost));
         emeraldPickaxeCostInput.set(String.valueOf(config.emeraldPickaxeCost));
