@@ -331,139 +331,137 @@ public class AutomationController {
     }
 
     private void handleCraftingCycle(Minecraft client) {
-        if (!(client.player.containerMenu instanceof CraftingMenu menu)) {
-            resetCraftingPlacement();
-            setStage(Stage.OPEN_CRAFTING, "Crafting menu closed", 2);
-            return;
-        }
-
-        if (craftingPlacementPhase == 0 && !menu.getCarried().isEmpty()) {
-            ItemStack carried = menu.getCarried();
-            if (carried.is(Items.STICK) || carried.is(Items.EMERALD)) {
-                int missingSlot = findNextMissingRecipeSlot(menu);
-                if (missingSlot != -1 && expectedRecipeItemForSlot(missingSlot) == carried.getItem()) {
-                    craftingPlacementPhase = 2;
-                    craftingSourceSlot = findEmptyInventorySlot(menu);
-                    if (craftingSourceSlot == -1) craftingSourceSlot = 9;
-                    craftingTargetSlot = missingSlot;
-                    craftingExpectedItem = carried.getItem();
-                    continueCraftPlacement(client, menu);
-                    return;
-                }
-            }
-            returnCarriedStackToInventory(client, menu);
-            status = "Force clearing stuck item from cursor";
-            cooldownTicks = 3;
-            return;
-        }
-
-        if (craftingPlacementPhase != 0) {
-            continueCraftPlacement(client, menu);
-            return;
-        }
-
-        int sticks = countInventoryItem(client, Items.STICK);
-
-        int logSlot = findAnyLogSlot(menu);
-        if (logSlot != -1 && sticks < 2) {
-            if (!menu.slots.get(0).getItem().isEmpty()) {
-                client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
-                status = "Collecting remaining items from result slot";
-                cooldownTicks = 3;
+            if (!(client.player.containerMenu instanceof CraftingMenu menu)) {
+                resetCraftingPlacement();
+                setStage(Stage.OPEN_CRAFTING, "Crafting menu closed", 2);
                 return;
             }
-            client.gameMode.handleInventoryMouseClick(menu.containerId, logSlot, 0, ClickType.QUICK_MOVE, client.player);
-            status = "Shift-clicking logs into crafting grid";
-            cooldownTicks = 4;
-            return;
-        }
-
-        int plankSlot = findAnyPlankSlot(menu);
-        boolean slot1Ok = menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
-        boolean slot4Ok = menu.slots.get(4).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
-
-        if ((plankSlot != -1 || !menu.getCarried().isEmpty()) && sticks < 2) {
-            if (!slot1Ok || !slot4Ok) {
-                ItemStack carried = menu.getCarried();
-                
-                if (carried.isEmpty() || !carried.is(net.minecraft.tags.ItemTags.PLANKS)) {
-                    if (plankSlot != -1) {
-                        client.gameMode.handleInventoryMouseClick(menu.containerId, plankSlot, 0, ClickType.PICKUP, client.player);
-                        status = "Picking up planks stack from inventory";
+    
+            // ЖЕСТКИЙ ПРИОРИТЕТ: Если кирка ГОТОВА в слоте 0, забираем её ЖЕСТКИМ Shift+ЛКМ прямо сейчас!
+            // Нам плевать, что в руке/курсоре — Shift+Click всё равно сработает и закинет кирку в инвентарь.
+            ItemStack result = menu.slots.get(0).getItem();
+            if (!result.isEmpty() && isTargetPickaxe(result)) {
+                lastCraftedPickaxeName = normalizedItemName(result);
+                resetCraftingPlacement();
+                // Нажимаем QUICK_MOVE (Shift+ЛКМ) по слоту 0
+                client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
+                setStage(Stage.EQUIP_PICKAXE, "Crafted and collected: " + lastCraftedPickaxeName, 5);
+                return;
+            }
+    
+            // Если мы в процессе поштучной раскладки компонентов, продолжаем её
+            if (craftingPlacementPhase != 0) {
+                continueCraftPlacement(client, menu);
+                return;
+            }
+    
+            // --- ЛОГИКА ПОДГОТОВКИ И КРАФТА (ЕСЛИ КИРКИ ЕЩЕ НЕТ В СЛОТЕ 0) ---
+            int sticks = countInventoryItem(client, Items.STICK);
+    
+            // Крафт палок из бревен
+            int logSlot = findAnyLogSlot(menu);
+            if (logSlot != -1 && sticks < 2) {
+                if (!menu.slots.get(0).getItem().isEmpty()) {
+                    client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
+                    cooldownTicks = 3;
+                    return;
+                }
+                client.gameMode.handleInventoryMouseClick(menu.containerId, logSlot, 0, ClickType.QUICK_MOVE, client.player);
+                status = "Shift-clicking logs";
+                cooldownTicks = 4;
+                return;
+            }
+    
+            // Крафт палок из досок
+            int plankSlot = findAnyPlankSlot(menu);
+            boolean slot1Ok = menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
+            boolean slot4Ok = menu.slots.get(4).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
+    
+            if ((plankSlot != -1 || !menu.getCarried().isEmpty()) && sticks < 2) {
+                if (!slot1Ok || !slot4Ok) {
+                    ItemStack carried = menu.getCarried();
+                    if (carried.isEmpty() || !carried.is(net.minecraft.tags.ItemTags.PLANKS)) {
+                        if (plankSlot != -1) {
+                            client.gameMode.handleInventoryMouseClick(menu.containerId, plankSlot, 0, ClickType.PICKUP, client.player);
+                            cooldownTicks = 2;
+                            return;
+                        }
+                    }
+                    if (!slot1Ok) {
+                        client.gameMode.handleInventoryMouseClick(menu.containerId, 1, 0, ClickType.PICKUP, client.player);
+                        cooldownTicks = 2;
+                        return;
+                    }
+                    if (!slot4Ok) {
+                        client.gameMode.handleInventoryMouseClick(menu.containerId, 4, 0, ClickType.PICKUP, client.player);
                         cooldownTicks = 2;
                         return;
                     }
                 }
-                
-                if (!slot1Ok) {
-                    client.gameMode.handleInventoryMouseClick(menu.containerId, 1, 0, ClickType.PICKUP, client.player);
-                    status = "Placing entire stack into slot 1";
-                    cooldownTicks = 2;
-                    return;
-                }
-                
-                if (!slot4Ok) {
-                    client.gameMode.handleInventoryMouseClick(menu.containerId, 4, 0, ClickType.PICKUP, client.player);
-                    status = "Placing second stack into slot 4";
-                    cooldownTicks = 2;
-                    return;
-                }
             }
-        }
-
-        if (sticks < 2 && !menu.getCarried().isEmpty() && slot1Ok && slot4Ok) {
-            returnCarriedStackToInventory(client, menu);
-            status = "Clearing cursor before collecting sticks";
-            cooldownTicks = 3;
-            return;
-        }
-
-        int nextTargetSlot = findNextMissingRecipeSlot(menu);
-        if (nextTargetSlot != -1 && sticks >= 2) {
-            if (menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS) || menu.slots.get(4).getItem().is(net.minecraft.tags.ItemTags.PLANKS)) {
-                ItemStack res = menu.slots.get(0).getItem();
-                if (!res.isEmpty() && !isTargetPickaxe(res)) {
-                    client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
-                } else {
+    
+            if (sticks < 2 && !menu.getCarried().isEmpty() && slot1Ok && slot4Ok) {
+                returnCarriedStackToInventory(client, menu);
+                cooldownTicks = 3;
+                return;
+            }
+    
+            // Раскладка изумрудов и палок по слотам для кирки
+            int nextTargetSlot = findNextMissingRecipeSlot(menu);
+            if (nextTargetSlot != -1 && sticks >= 2) {
+                // Если в сетке остались доски от крафта палок — вычищаем их Shift-кликом
+                if (menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS) || menu.slots.get(4).getItem().is(net.minecraft.tags.ItemTags.PLANKS)) {
                     if (!menu.slots.get(1).getItem().isEmpty()) client.gameMode.handleInventoryMouseClick(menu.containerId, 1, 0, ClickType.QUICK_MOVE, client.player);
                     if (!menu.slots.get(4).getItem().isEmpty()) client.gameMode.handleInventoryMouseClick(menu.containerId, 4, 0, ClickType.QUICK_MOVE, client.player);
+                    cooldownTicks = 3;
+                    return;
                 }
-                cooldownTicks = 3;
+    
+                // Если в руке уже завис нужный предмет (например, палка после раскладки предыдущего слота)
+                if (!menu.getCarried().isEmpty()) {
+                    ItemStack carried = menu.getCarried();
+                    Item expected = expectedRecipeItemForSlot(nextTargetSlot);
+                    if (carried.getItem() == expected) {
+                        // Перепрыгиваем сразу на фазу клика по сетке крафта
+                        craftingPlacementPhase = 2; 
+                        craftingSourceSlot = findEmptyInventorySlot(menu);
+                        if (craftingSourceSlot == -1) craftingSourceSlot = 9;
+                        craftingTargetSlot = nextTargetSlot;
+                        craftingExpectedItem = expected;
+                        continueCraftPlacement(client, menu);
+                        return;
+                    } else {
+                        returnCarriedStackToInventory(client, menu);
+                        cooldownTicks = 2;
+                        return;
+                    }
+                }
+    
+                Item expectedItem = expectedRecipeItemForSlot(nextTargetSlot);
+                int sourceSlot = findInventorySlot(menu, expectedItem);
+                if (sourceSlot == -1) {
+                    setStage(Stage.EVALUATE, "Missing ingredient for slot " + nextTargetSlot, 2);
+                    return;
+                }
+    
+                client.gameMode.handleInventoryMouseClick(menu.containerId, sourceSlot, 0, ClickType.PICKUP, client.player);
+                craftingPlacementPhase = 1;
+                craftingSourceSlot = sourceSlot;
+                craftingTargetSlot = nextTargetSlot;
+                craftingExpectedItem = expectedItem;
+                status = "Placing component into slot " + nextTargetSlot;
+                cooldownTicks = 2;
                 return;
             }
-
-            Item expectedItem = expectedRecipeItemForSlot(nextTargetSlot);
-            int sourceSlot = findInventorySlot(menu, expectedItem);
-            if (sourceSlot == -1) {
-                setStage(Stage.EVALUATE, "Missing ingredient for pickaxe slot " + nextTargetSlot, 2);
-                return;
-            }
-
-            client.gameMode.handleInventoryMouseClick(menu.containerId, sourceSlot, 0, ClickType.PICKUP, client.player);
-            craftingPlacementPhase = 1;
-            craftingSourceSlot = sourceSlot;
-            craftingTargetSlot = nextTargetSlot;
-            craftingExpectedItem = expectedItem;
-            status = "Placing pickaxe component into slot " + nextTargetSlot;
-            cooldownTicks = 2;
-            return;
-        }
-
-        ItemStack result = menu.slots.get(0).getItem();
-        if (!result.isEmpty()) {
-            if (isTargetPickaxe(result)) {
-                lastCraftedPickaxeName = normalizedItemName(result);
+    
+            // Сборка побочных ресурсов (например, если скрафтили палки, они заберутся здесь, если кирка еще не готова)
+            if (!result.isEmpty() && !isTargetPickaxe(result)) {
                 resetCraftingPlacement();
                 client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
-                setStage(Stage.EQUIP_PICKAXE, "Crafted and collected: " + lastCraftedPickaxeName, 5);
-            } else {
-                resetCraftingPlacement();
-                client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
-                status = "Collected sub-resource from result slot";
+                status = "Collected sub-resource";
                 cooldownTicks = 3;
             }
         }
-    }
 
     private void continueCraftPlacement(Minecraft client, CraftingMenu menu) {
         if (craftingPlacementPhase == 1) {
