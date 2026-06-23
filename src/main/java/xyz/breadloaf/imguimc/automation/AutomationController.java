@@ -309,20 +309,14 @@ public class AutomationController {
         status = "Waiting crafting table";
     }
 
-    private void handleCraftingCycle(Minecraft client) {
+private void handleCraftingCycle(Minecraft client) {
         if (!(client.player.containerMenu instanceof CraftingMenu menu)) {
             resetCraftingPlacement();
             setStage(Stage.OPEN_CRAFTING, "Crafting menu closed", 2);
             return;
         }
 
-        if (!menu.getCarried().isEmpty()) {
-            returnCarriedStackToInventory(client, menu);
-            status = "Cleaning cursor item";
-            cooldownTicks = 3;
-            return;
-        }
-
+        // Если мы в процессе поштучной раскладки КИРКИ — продолжаем её
         if (craftingPlacementPhase != 0) {
             continueCraftPlacement(client, menu);
             return;
@@ -330,7 +324,7 @@ public class AutomationController {
 
         int sticks = countInventoryItem(client, Items.STICK);
 
-        // ШАГ 1: ПЕРЕРАБОТКА БРЁВЕН В ДОСКИ
+        // ШАГ 1: ПЕРЕРАБОТКА БРЁВЕН В ДОСКИ (Через Shift-клик)
         int logSlot = findAnyLogSlot(menu);
         if (logSlot != -1 && sticks < 2) {
             if (!menu.slots.get(0).getItem().isEmpty()) {
@@ -339,39 +333,80 @@ public class AutomationController {
                 cooldownTicks = 3;
                 return;
             }
+            if (!menu.getCarried().isEmpty()) {
+                returnCarriedStackToInventory(client, menu);
+                cooldownTicks = 2;
+                return;
+            }
             client.gameMode.handleInventoryMouseClick(menu.containerId, logSlot, 0, ClickType.QUICK_MOVE, client.player);
             status = "Shift-clicking logs into crafting grid";
             cooldownTicks = 4;
             return;
         }
 
-        // ШАГ 2: КРАФТ ПАЛОК ИЗ ДОСОК
+        // ШАГ 2: КРАФТ ПАЛОК ИЗ ДОСОК (Безопасный ручной полу-автомат)
         int plankSlot = findAnyPlankSlot(menu);
         if (plankSlot != -1 && sticks < 2) {
             boolean slot1Ok = menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
             boolean slot4Ok = menu.slots.get(4).getItem().is(net.minecraft.tags.ItemTags.PLANKS);
             
             if (!slot1Ok || !slot4Ok) {
-                if (!menu.slots.get(1).getItem().isEmpty() && !slot1Ok) {
-                    client.gameMode.handleInventoryMouseClick(menu.containerId, 1, 0, ClickType.QUICK_MOVE, client.player);
+                ItemStack carried = menu.getCarried();
+                
+                // Если в руке ничего нет — берём доски из инвентаря
+                if (carried.isEmpty() || !carried.is(net.minecraft.tags.ItemTags.PLANKS)) {
+                    client.gameMode.handleInventoryMouseClick(menu.containerId, plankSlot, 0, ClickType.PICKUP, client.player);
+                    status = "Picking up planks for sticks";
                     cooldownTicks = 2;
                     return;
                 }
-
-                client.gameMode.handleInventoryMouseClick(menu.containerId, plankSlot, 0, ClickType.PICKUP, client.player);
-                craftingPlacementPhase = 1;
-                craftingSourceSlot = plankSlot;
-                craftingTargetSlot = !slot1Ok ? 1 : 4;
-                craftingExpectedItem = menu.slots.get(plankSlot).getItem().getItem();
-                status = "Placing planks for sticks";
-                cooldownTicks = 2;
-                return;
+                
+                // Если доски в руке — аккуратно кладём по 1 штуке (Правый клик, button = 1)
+                if (!slot1Ok) {
+                    client.gameMode.handleInventoryMouseClick(menu.containerId, 1, 1, ClickType.PICKUP, client.player);
+                    status = "Placing first plank";
+                    cooldownTicks = 2;
+                    return;
+                }
+                if (!slot4Ok) {
+                    client.gameMode.handleInventoryMouseClick(menu.containerId, 4, 1, ClickType.PICKUP, client.player);
+                    status = "Placing second plank";
+                    cooldownTicks = 2;
+                    return;
+                }
             }
         }
 
-        // ШАГ 3: СБОРКА КИРКИ
+        // Если палок всё ещё мало, но доски уже разложены в сетке — курсор должен быть пустой, чтобы забрать результат
+        if (sticks < 2 && !menu.getCarried().isEmpty()) {
+            returnCarriedStackToInventory(client, menu);
+            status = "Clearing cursor before collecting sticks";
+            cooldownTicks = 3;
+            return;
+        }
+
+        // ШАГ 3: СБОРКА КИРКИ (Строго когда палок уже хватает!)
         int nextTargetSlot = findNextMissingRecipeSlot(menu);
         if (nextTargetSlot != -1 && sticks >= 2) {
+            // Очищаем сетку от возможных остатков досок в слотах 1 и 4 перед выкладыванием кирки
+            if (menu.slots.get(1).getItem().is(net.minecraft.tags.ItemTags.PLANKS) || menu.slots.get(4).getItem().is(net.minecraft.tags.ItemTags.PLANKS)) {
+                ItemStack res = menu.slots.get(0).getItem();
+                if (!res.isEmpty() && !isTargetPickaxe(res)) {
+                    client.gameMode.handleInventoryMouseClick(menu.containerId, 0, 0, ClickType.QUICK_MOVE, client.player);
+                } else {
+                    if (!menu.slots.get(1).getItem().isEmpty()) client.gameMode.handleInventoryMouseClick(menu.containerId, 1, 0, ClickType.QUICK_MOVE, client.player);
+                    if (!menu.slots.get(4).getItem().isEmpty()) client.gameMode.handleInventoryMouseClick(menu.containerId, 4, 0, ClickType.QUICK_MOVE, client.player);
+                }
+                cooldownTicks = 3;
+                return;
+            }
+
+            if (!menu.getCarried().isEmpty()) {
+                returnCarriedStackToInventory(client, menu);
+                cooldownTicks = 2;
+                return;
+            }
+
             Item expectedItem = expectedRecipeItemForSlot(nextTargetSlot);
             int sourceSlot = findInventorySlot(menu, expectedItem);
             if (sourceSlot == -1) {
@@ -389,6 +424,7 @@ public class AutomationController {
             return;
         }
 
+        // ЗАБИРАЕМ ГОТОВЫЙ ПРЕДМЕТ ИЗ СЛОТА РЕЗУЛЬТАТА (0)
         ItemStack result = menu.slots.get(0).getItem();
         if (!result.isEmpty()) {
             if (isTargetPickaxe(result)) {
